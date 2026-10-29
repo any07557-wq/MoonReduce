@@ -287,7 +287,11 @@ README 补齐实际 JSON、1-minimal、固定安装、演示与范围；SUBMISSI
 
 实际执行 python3 scripts/doctor.py：当前环境返回 0；python3 scripts/check_doctor.py 验证缺少必要 PATH／编译器返回 1、SDK 文件无执行权限返回 1、仅缺可选 C++ 仍为 0；临时 SDK 内容及模式不变，没有创建 registry。Python 语法和 git diff --check 通过。本单元提交主题 feat: add environment diagnostics，提交后历史计数为 7。
 
-## 公开事实与相关工作
+### B：通用签名适配模板
+
+A 已提交为 aff7523（feat: add environment diagnostics），实际历史数 7。B 新增可执行 signature.py、人工栈断言目标及编写指南，在算法对拍之外展示“明确正常退出状态 + 完整 stderr 签名”的判定；格式无效必须另有有效性签名，避免把 Python 缺脚本的退出 2 当 U。
+
+实际执行 python3 scripts/check_oracle_templates.py 通过：覆盖正例／负例／无效输入、未知退出、带签名的崩溃、缺命令／脚本、配置错误、超时、截断与不完整末行、stdout 假签名及带空格／shell 字符参数。真实 CLI 缩到 POP 加 LF，最终 I、单删空文件 NI、原输入不变。Python 语法与 diff 检查通过。模板只做判定，不改算法或运行时依赖；本单元提交主题 docs: add executable oracle templates and guide，提交后历史计数为 8。
 
 ## 公开事实与相关工作
 
