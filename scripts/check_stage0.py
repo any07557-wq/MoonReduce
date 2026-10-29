@@ -83,7 +83,7 @@ def main():
     check_interrupt(binary)
     check_interrupt(binary, stubborn=True)
     run("moon", "fmt", "--check")
-    print("Stage 0 acceptance probes passed. Production reduction CLI is not implemented.")
+    print("Stage 0 acceptance probes passed.")
 
 
 if __name__ == "__main__":

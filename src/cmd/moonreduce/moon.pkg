@@ -1,5 +1,10 @@
 import {
   "moonbitlang/core/argparse",
+  "moonbitlang/core/env",
+  "moonbitlang/core/string",
+  "moonbitlang/async",
+  "moonbitlang/async/stdio",
+  "moonreduce/moonreduce/native",
 }
 
 pkgtype(kind: "executable")

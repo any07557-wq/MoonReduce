@@ -1,0 +1,13 @@
+import {
+  "moonreduce/moonreduce/core",
+  "moonreduce/moonreduce/lines",
+  "moonbitlang/async",
+  "moonbitlang/async/fs",
+  "moonbitlang/async/process",
+  "moonbitlang/async/os_error",
+  "moonbitlang/async/stdio",
+  "moonbitlang/async/io",
+  "moonbitlang/core/env",
+  "moonbitlang/core/encoding/hex",
+  "moonbitlang/core/encoding/utf8",
+}

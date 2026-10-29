@@ -64,7 +64,7 @@ async fn stop_group(pid : Int32, startup_fallback~ : Bool) -> Unit {
 async fn send_signal(signal : String, target : String) -> Int32 {
   let status = @process.run(
     "/usr/bin/kill",
-    ["--signal", signal, "--", target],
+    ["-" + signal, "--", target],
     stdout=@process.redirect_to_file("/dev/null"),
     stderr=@process.redirect_to_file("/dev/null"),
   )

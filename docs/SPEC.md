@@ -1,6 +1,6 @@
 # MoonReduce v0.1 行为规格
 
-本文件是交付目标，不是已实现功能列表。当前已完成纯核心及阶段 0 能力探针；正式 CLI 尚未实现，验证进度见 [STATUS.md](STATUS.md)。
+本文件是交付目标，不是最终发布声明。当前阶段 2 已打通 Native CLI 主流程；阶段 3 的完整执行边界和报告矩阵尚未验收，验证进度见 [STATUS.md](STATUS.md)。
 
 ## 范围与采用理由
 
@@ -13,17 +13,19 @@ v0.1 限定单文件、LF 行粒度、有序序列、串行、删除型 ddmin。
 目标命令形式：
 
 ```sh
-moonreduce --input failing.txt --output reduced.txt --report report.json \
+moonreduce failing.txt --output reduced.txt --report report.json \
   --timeout-ms 2000 --max-tests 1000 -- /absolute/path/to/oracle fixed-arg
 ```
 
-- `--input`、`--output`、`--report` 及 `--` 后的非空命令必填；`--timeout-ms` 默认 2000，正整数；`--max-tests` 默认 1000，整数且至少 2。超出实现整数范围拒绝，不静默截断。`--help`、`--version` 返回 0，不执行 oracle。
+- `INPUT` 位置参数、`--output`、`--report` 及 `--` 后的非空命令必填；按阶段 2 prompt 采用位置输入，不再提供早期规格的 --input 形式。`--timeout-ms` 默认 2000，范围 1–2147483647；`--max-tests` 默认 1000，范围 2–2147483647。均为十进制整数，超出范围拒绝，不静默截断。`--help`、`--version` 返回 0，不执行 oracle。
 - `--` 之前复用 core/argparse 解析工具选项；之后所有参数逐个原样传入，不再解释为工具选项。
 - 每次通过参数数组执行 `[command, fixed_args..., absolute_candidate_path]`。候选路径**追加为最后一个参数**；不替换占位符，不拼接 shell 命令，不隐式运行 shell。
 - 保持启动 MoonReduce 时的工作目录与环境，stdin 为 `/dev/null`。隔离的是候选文件及其日志目录，不改变 oracle 的 cwd；临时目录不是沙箱。
 - 命令含 `/` 时按启动目录解析；不含 `/` 时允许 PATH 搜索。参数不能含 NUL；不承诺表示非 UTF-8 文件名。文件内容始终使用字节。
 - 输出、报告路径必须互异且不能指向输入路径；已有目标拒绝。v0.1 不提供覆盖已有文件的选项。预先检查并以独占创建避免覆盖竞争；只替换本次运行已经拥有的目标。
+- 输入以 realpath 解析；输出/报告的父目录规范化，以 /usr/bin/test 的 -ef（设备和 inode）比较已有文件身份，覆盖硬链接与符号链接；不跟随最终符号链接的存在性检查也会拒绝悬空符号链接。输入本身可以是指向普通文件的符号链接。
 - 无已知 Interesting 输入时不创建反例输出；如需提前预留文件名，应撤销本次空预留。报告可在没有输出的情况下存在。无权写报告时打印 stderr 并以执行错误退出，不伪称报告已保存。
+- 参数／路径预检或初始读文件阶段，若尚未安全预留报告目标，仅向 stderr 报错，不创建 JSON。运行阶段的初始拒绝、oracle 错误、预算停止、最终复验和中断会写报告；已有文件冲突绝不以报告写入为由覆盖目标。
 
 ## Oracle 结果与执行错误
 
@@ -42,6 +44,8 @@ oracle 的退出码与 MoonReduce 自身退出码是两个独立接口。
 只有工具自身定时器到期才记超时；不根据 oracle 的 124/137 推断超时。判断程序应将被测程序的崩溃、特定断言、错误签名或输出差异转换为上述三态；判断程序自己的崩溃不能成为 Interesting。用户负责定义“同一个问题”，不能把任意非零退出当作复现。
 
 v0.1 面向确定、可重复的 oracle。目标行为会改变或随机出现的故障超出承诺范围；一次最终复验或少量重复调用不能证明绝对稳定。
+
+判断程序应只读候选文件。驱动在判定后核对原始候选字节，检测到候选内容被修改时作为执行错误，避免把不同内容的结果当作删除候选的证据。
 
 ## 行与字节
 
@@ -100,9 +104,9 @@ v0.1 首先不实现缓存；报告 `cache_enabled=false`、`cache_hits=0`。如
 
 每次判断在新建的权限 0700 临时目录中写入候选和权限 0600 的 stdout/stderr 日志。输出流直接重定向到文件，不用无限内存收集，也不串行等待两个管道。诊断每个流最多读取 4096 字节，记录是否截断。默认在调用清理后删除目录和完整日志；最终报告只保留有界诊断，不提供日志保留选项。日志不设磁盘配额；工具可观察到的必要文件操作失败作为执行错误。
 
-Native 驱动使用已验证的 `moonbitlang/async@0.22.4` 进程与文件 API；Linux 依赖 `/usr/bin/setsid`（util-linux）建立独立会话/进程组、`/usr/bin/kill`（procps-ng）发送组信号。不能仅依赖 async 默认的单 PID 取消器，也不使用 timeout 的保留退出码判断超时。
+Native 驱动使用已验证的 `moonbitlang/async@0.22.4` 进程与文件 API；Linux 依赖 `/usr/bin/setsid`（util-linux）建立独立会话/进程组、`/usr/bin/kill`（procps-ng）发送组信号，另用 `/usr/bin/test -ef` 比较文件身份。固定使用已验证的 `with_timeout`，只捕获其 TimeoutError；不使用 `with_timeout_opt` 的旧嵌套等待路径，也不使用系统 timeout 的保留退出码判断超时。
 
-单次计时从受控进程启动返回后开始，到进程结束为止；超时后先对进程组发送 TERM，100ms 宽限后发送 KILL，等待并回收直接判断进程。清理处于不可取消区，组长提前退出也不能取消剩余组清理；正常结束也清理遗留组成员。启动与 setsid 建组间的取消竞争需有直接 PID 终止后备。若辅助工具无法运行或不能证明清理完成，应作为执行错误，不能静默忽略权限等异常；阶段 0 探针只验证了自有组下已消失/成功的常见结果，生产错误诊断仍需后续验收。
+单次计时从受控进程启动返回后开始，到进程结束为止；超时后先对进程组发送 TERM，100ms 宽限后发送 KILL，等待并回收直接判断进程。清理处于不可取消区，组长提前退出也不能取消剩余组清理；正常结束也清理遗留组成员。组已消失可立即结束清理。启动与 setsid 建组间的取消竞争有直接 PID 终止后备。kill 使用实测可处理较小负组 ID 的短信号形式（-TERM/-KILL），固定 LC_ALL=C 并仅把明确 No such process 视为已消失；其他失败报执行错误。辅助错误时尝试现有 async 硬取消原语作 Linux 后备；异常边界的完整故障注入仍待阶段 3 验收。
 
 验收必须外部检查真实父、子、孙进程的 PID 消失，并检查普通父进程 wait 子进程的证据；另验证忽略 TERM 的判断程序需要 KILL。不能用 mock、仅检查主进程退出或仅检查 kill 返回成功代替。普通子进程继承进程组；不承诺恶意脱离进程组的程序、内核不可中断状态或 SIGKILL 下的友好退出/用户态清理，也不提供沙箱。
 
@@ -118,7 +122,7 @@ Native 驱动使用已验证的 `moonbitlang/async@0.22.4` 进程与文件 API�
 | `input`、`output`、`oracle_argv` | 绝对输入/输出路径（无输出为 null）；原命令参数数组 |
 | `original_bytes/segments`、`best_bytes/segments` | 精确字节和段数；无最佳为 null |
 | `stop_reason` | 见下表；不是目标行为/最小性的别名 |
-| `search_stop_reason` | completed / budget_exhausted / execution_error / interrupted；保留复验前的停止原因 |
+| `search_stop_reason` | not_started / completed / budget_exhausted / execution_error / interrupted；保留复验前的停止原因 |
 | `initial_check` | interesting / not_interesting / unresolved / error / interrupted / not_run |
 | `final_revalidation` | interesting / not_interesting / unresolved / error / interrupted / not_run |
 | `minimality` | verified / blocked_by_unresolved / incomplete / not_checked |
