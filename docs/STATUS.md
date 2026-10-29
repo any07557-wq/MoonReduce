@@ -1,13 +1,13 @@
 # 实际状态与事实记录
 
-记录日期：2026-10-29（Asia/Shanghai）。阶段 0 的实现/探针验收通过；不代表 v0.1 已完成或比赛审核通过。下一阶段尚未开始。
+记录日期：2026-10-29（Asia/Shanghai）。阶段 0 能力探针和阶段 1 纯核心均已验收通过；不代表 v0.1 已完成或比赛审核通过。正式 CLI 尚未实现，阶段 2 尚未开始。
 
-## 已完成
+## 阶段 0 已完成（历史记录）
 
 - 确认 `pwd` 与 Git 根均为 `/home/user/MoonBit_Program/MoonReduce`；开始本阶段时 main 无提交、工作区为空，无适用 AGENTS.md。沿用当前独立仓库，没有操作上级目录或其他项目。
 - 建立 MoonBit 模块、纯 `core` 协议类型、仅输出帮助的 CLI 骨架及 Native 探针；加入忽略规则、README、MIT 许可证和三份要求的文档。
 - 固定并实测 async 0.22.4；没有升级 MoonBit、编译器或全部依赖。旧缓存 0.20.2 源码的 Linux 退出状态未可靠区分信号，且取消仅发送单 PID 信号，不用于此项目。
-- Native 探针通过真实文件/进程 API 验证请求→异步执行→反馈接口方向，无嵌套事件循环。这里只是接口证明，**没有实现 ddmin 状态机**。
+- Native 探针通过真实文件/进程 API 验证请求→异步执行→反馈接口方向，无嵌套事件循环。阶段 0 当时仅证明接口，尚未实现 ddmin；阶段 1 已接入真实 Reducer 做回归。
 - 在当前仓库本地设置用户提供的 Git 身份；未配置全局 Git 身份，未 push、发布或打标签。
 
 ## 固定的实测组合
@@ -34,7 +34,7 @@
 
 未执行重新安装。服务响应标明这些归档有 60 天保留策略，本次响应到期日为 2026-12-12；长期复现应保留工具链归档。本仓库不分发工具链。三天内的复现步骤及新机器独立执行仍需最后阶段实际验证。
 
-## 实际执行与结果
+## 阶段 0 实际执行与结果
 
 环境检查运行了 `pwd`、`git rev-parse --show-toplevel`、`git status --short --branch`、文件列表与祖先/工作区 AGENTS.md 搜索；无无关改动。`git var GIT_AUTHOR_IDENT` 起初报告缺身份；收到用户提供的信息后仅使用 `git config --local` 设置。沙箱将 `.git` 设为只读，相关 Git 写入经授权的沙箱升级执行。
 
@@ -64,7 +64,39 @@
 7. 外部 Python 对已就绪的 Native 探针发送 SIGINT，最终保留 signal 退出状态，清理完成标记存在，三层进程树全部消失；另验证 SIGINT 中忽略 TERM 的 oracle 也完成 KILL 升级。
 8. 正常运行后的候选临时目录和完整日志清除。失败时测试脚本的补救清理不计为通过证据。
 
-`moon test` 未执行：阶段 0 没有算法单元测试，以可执行能力探针验收。正式缩减、预算、报告、最佳保存和最终输出路径复验均**尚未实现/未验证**；Release 构建、普通非 WSL Linux、新装工具链/干净机器、独立消费工程及真实调试流程也**未验证**。
+截至阶段 0，`moon test` 未执行，没有算法单元测试，以可执行能力探针验收。当时正式缩减、预算、报告、最佳保存、最终输出路径复验与 Release 均未实现/未验证。阶段 1 验证见下一节。
+
+## 阶段 1 纯缩减核心
+
+开始阶段 1 时检查了三份项目文档、Git 根/状态/最近提交与 AGENTS.md。仓库位于正确目录、main 干净，前置提交为 `f0853c7 chore: bootstrap MoonReduce and freeze v0.1 scope`。没有真实前置阻塞，没有修改依赖或推进 Native 驱动。
+
+已实现：
+
+- 纯 MoonBit `Reducer`：有序原始位置、唯一待反馈请求、确定次序的子集/补集 ddmin、三态反馈、明确初始拒绝、当前最佳不可变快照。
+- 初始 Interesting 后明确测试删除全部元素；单元素到空是一次真实候选请求，初始空序列仍须确认，零次删除证明为空真。
+- 独立最终单元素检查：Interesting 继续缩减并重启证明，旧证据失效；当前完整一轮有 Unresolved 就 BlockedByUnresolved。只有全为 NotInteresting 才 Verified，不称全局最短。
+- `stop(cause)` 可在任意边界安全停止，保留已知 Interesting；预算、错误和中断不会伪装成完整证明。错序/重复/迟到反馈被拒绝且不修改状态；完成后的 stop 不覆盖已完成结论。
+- 同步 `reduce(input, oracle)` 返回最佳元素及原始位置，不依赖文件或进程；回调错误直接传播，没有隐藏复验或预算。`feedback_count` 与实际进程启动数分开。
+- 核心 README 提供可执行使用示例；原 Native 探针改为向真实 Reducer 反馈实际进程结果，再安全停止，保持异步边界可接入。
+
+独立验证使用黑盒测试，只依赖公开接口。检查器重建返回位置与原始元素的对应关系、重新调用谓词确认仍 Interesting，并独立重建每个单元素删除候选验证所有最小性声明，不复用核心删除函数或把内部 Verified 当作证明。完整枚举长度 0–4 的布尔谓词、长度 0–3 的三态谓词，覆盖其全部子序列判定表；此外检查重复元素、多元素共同触发、非单调情况下 1-minimal 非全局最短、确定遍历和提前停止。
+
+为覆盖“最终检查得到 Interesting 必须继续”的协议分支，另有人工反馈序列模拟搜索时 Unresolved、验证时可判断；测试最终用独立的确定目标谓词复查结果。此测试不代表对随机 oracle 的稳定性承诺。
+
+阶段 1 补充明确了 SPEC：多元素初始 Interesting 后先发空 Search 候选；单元素直接发空 MinimalityCheck，避免漏掉全部删除。重复步骤可请求相同位置，不实现缓存。算法概念已实际核对原作者 Andreas Zeller 的 [The Debugging Book 一手说明](https://www.debuggingbook.org/html/DeltaDebugger.html)；当前实现独立编写，没有复制 Python 源码。核心只导入标准 debug，测试另用标准 test。
+
+| 阶段 1 实际命令 | 最终结果 |
+| --- | --- |
+| `moon test src/core --target native --deny-warn` | Debug：20 个测试全部通过，含文档示例和穷举谓词的独立复查 |
+| `moon test src/core --target native --release --deny-warn` | Release：同一套 20 个测试全部通过 |
+| `moon test src/core --target wasm-gc --deny-warn` | 20 个测试全部通过，核心不依赖 Native 进程层 |
+| `python3 scripts/check_stage0.py` | 修复后完整回归通过，含构建约 6.4 秒；文件/退出码/大输出、树清理与两种外部 SIGINT 均通过。真实 Reducer 的 async 反馈与安全停止也通过 |
+| `moon fmt --check` | 通过（包含在最终回归脚本中） |
+| `git diff --check` | 通过，无空白错误 |
+
+必要前置修复：本阶段回归首次在树清理阶段触发整个探针的 20 秒 TimeoutError。另用 `git archive f0853c7` 在 `/tmp/moonreduce-stage1-baseline` 重建未修改的阶段 0 代码，也在约 20.2 秒复现，证明不是纯核心新增逻辑引起。现场检查可见独立进程组已建立，500ms 等待期限后进程仍存活。本机固定组合下，改用 `with_timeout` 并只将其 TimeoutError 映射为 None 后，原回收及 SIGINT 验收通过；没有改动依赖、延长 20 秒看门狗或取消进程树检查。新增对 500ms/300ms 两个超时调用在 5 秒内完成的检查。上游 `with_timeout_opt` 在此嵌套路径停滞的更深层根因未确认，不声称已修复上游库。后续 Native 驱动应沿用本次实测路径。
+
+本阶段无需下载新依赖。初次编译暴露的类型/运算符优先级问题已修复，没有通过降低警告级别绕过；核心命令均使用 `--deny-warn`。Native 回归构建仍可见阶段 0 记录的上游 C `write` 返回值警告。阶段 1 验收通过：返回值及最小性声明有独立行为检查，提前停止与 Unresolved 不冒充完整证明；Native 接口回归问题也已修复。4 小时阶段预算内完成，下一阶段仍等待用户 prompt。
 
 ## 公开事实与相关工作
 
@@ -77,14 +109,16 @@
 - 本机 Mooncakes 缓存索引 `~/.moon/registry/index/user/Ag108/MoonReduce.index` 已有 `Ag108/MoonReduce` 0.1.0（2026-09-14）及 0.2.0（2026-09-21），描述为确定性失败用例缩减，依赖 async 0.20.4、许可证 Apache-2.0、repository 字段为空。**这至少是已有同名相近工作的证据**。[在线包文档](https://mooncakes.io/docs/Ag108/MoonReduce/)抓取失败，未下载其源码，未核验在线当前状态、功能完整性、作者归属或与本项目的关系；不将索引记录推断为没有竞争或已经完成差异化。
 - 当前安装的 [core](https://github.com/moonbitlang/core) 已有 `quickcheck/shrink` 的 `Shrink` 候选迭代接口，覆盖数组/Bytes 等类型；参数和 JSON 也有现有库。缩减不是 MoonBit 生态从零开始的能力。是否具有与本规格相同的独立外部 oracle 工作流未作全面核验。
 - [async](https://github.com/moonbitlang/async) 已有 Native 文件、进程、超时、取消及文件重定向 API。本项目直接复用；0.22.4 安装源可见对信号返回负值的处理，而默认 Unix 取消发送单 PID 信号，因此另用 setsid/kill 清理进程组。
-- ddmin 的算法来源参考 Andreas Zeller、Ralf Hildebrandt 的 *Simplifying and Isolating Failure-Inducing Input*（2002，[DOI](https://doi.org/10.1109/32.988498)）及 [Delta Debugging 项目](https://www.st.cs.uni-saarland.de/dd/)。本阶段没有移植算法代码；论文 PDF 抓取未成功，算法实现前仍需核对一手算法说明。
+- ddmin 的算法来源参考 Andreas Zeller、Ralf Hildebrandt 的 *Simplifying and Isolating Failure-Inducing Input*（2002，[DOI](https://doi.org/10.1109/32.988498)）及 [Delta Debugging 项目](https://www.st.cs.uni-saarland.de/dd/)。原论文 PDF 抓取未成功；阶段 1 已核对作者的 [Reducing Failure-Inducing Inputs](https://www.debuggingbook.org/html/DeltaDebugger.html) 一手算法说明，没有复制其 Python 源码。
 
 第三方依赖的 Apache-2.0 许可证仍随原包保留；本项目 MIT 不覆盖第三方依赖。没有借用其他项目名义、生产 bug 或测试数量保证赛事通过。
 
 ## 验收结论、限制和下一步
 
-阶段 0 的文件/进程关键可行性风险已有真实可运行路径，骨架可 check/build，范围与状态契约已固定。23 小时计划仍可信；缓存等优化不在必交付路径。当前不是一个可用缩减器。
+阶段 0 的文件/进程关键可行性风险已有真实可运行路径，阶段 1 提供可用的纯缩减核心；完整 Native 工具尚未交付。23 小时计划仍可信，缓存等优化不在必交付路径。
 
 进程探针只把 kill 的 0/1 当作成功/通常已消失，未完整区分权限等异常诊断；不能直接复制为生产驱动。下一 Native 阶段须补准确失败诊断及错误注入，保证无法清理时报告执行错误。已验证普通继承进程组的树；不承诺恶意 setsid 脱离、不可中断内核等待或 SIGKILL 后用户态清理。
 
-下一阶段入口：等待用户阶段 1 prompt，在本规格下实现纯 MoonBit ddmin 候选请求/反馈核心及必要行为测试；当前停止，不提前实现。
+实际进程调用预算、最佳文件保存、JSON/摘要和最终输出路径复验尚未实现/未验证。普通非 WSL Linux、新装工具链/干净环境、独立消费工程和真实调试流程也未验证。核心测试的穷举边界如上，不是任意输入的形式证明；不承诺全局最短或随机 oracle 稳定性。
+
+下一阶段入口：等待用户阶段 2 prompt，接入已实现的 Reducer 并生产化 Native 文件/进程驱动；本阶段结束后停止，不提前实现。

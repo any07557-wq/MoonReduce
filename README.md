@@ -2,7 +2,7 @@
 
 给一份失败文件和识别同一问题的外部判断程序，自动删除输入行，输出经过再次验证的较小反例；同时提供纯 MoonBit 可复用缩减核心。
 
-**当前为阶段 0 骨架**：已运行文件与进程能力探针；ddmin、正式 CLI、预算/报告和调试示例尚未实现。下列缩减命令是 v0.1 规格，不是当前可用功能：
+**当前已完成阶段 1 纯核心**：可用确定性 ddmin 请求／反馈接口或[同步序列 API](src/core/README.mbt.md)，不需导入进程库。文件与进程能力探针已通过；正式 CLI、预算/报告和调试示例尚未实现。下列缩减命令是 v0.1 规格，不是当前可用功能：
 
 ```sh
 moonreduce --input failing.txt --output reduced.txt --report report.json \
@@ -27,10 +27,14 @@ moon version --all
 moon check --target native --deny-warn
 moon build --target native --deny-warn
 moon run src/cmd/moonreduce --target native
+moon test src/core --target native --deny-warn
+moon test src/core --target native --release --deny-warn
 python3 scripts/check_stage0.py
 ```
 
-首次 check/build 自动获取固定依赖；不需要 `moon upgrade`。探针脚本核对实测工具链和实际解析的 async 版本，执行 Native 字节/进程探针、纯核心 Wasm 检查、超时树清理、外部 SIGINT 和格式检查。成功末行是 `Stage 0 acceptance probes passed...`；临时候选和日志在结束时删除。也可单独运行 `moon run src/probe --target native`，但它不包含外部 SIGINT 验收。
+首次 check/build 自动获取固定依赖；不需要 `moon upgrade`。核心测试独立重建子序列、重新判断结果并逐个删除元素复查，枚举小规模布尔/三态谓词；Debug 和 Release 使用同一套检查。也可执行 `moon test src/core --target wasm-gc --deny-warn`。
+
+阶段 0 探针脚本核对工具链与 async 版本，执行 Native 字节/进程探针、纯核心 Wasm 检查、超时树清理、外部 SIGINT 和格式检查。成功末行是 `Stage 0 acceptance probes passed...`；临时候选和日志在结束时删除。也可单独运行 `moon run src/probe --target native`，但它不包含外部 SIGINT 验收。
 
 新环境如需安装工具链，可按[官方安装说明](https://docs.moonbitlang.com/en/latest/download-and-install.html)使用固定构建版本（阶段 0 核对过官方脚本参数及两个归档 URL 的 HTTP 200，未重新安装工具链）：
 
@@ -51,4 +55,4 @@ export PATH="$HOME/.moon/bin:$PATH"
 - [Picire](https://github.com/renatahodovan/picire) 和 [C-Reduce](https://github.com/csmith-project/creduce) 是已存在的相关工具；本地 Mooncakes 索引也已发现 `Ag108/MoonReduce`，没有声称生态空白或选题必然获准。
 - 文件/进程复用 [moonbitlang/async](https://github.com/moonbitlang/async)，参数/JSON 复用 [moonbitlang/core](https://github.com/moonbitlang/core)；二者为 Apache-2.0 依赖，保留其原许可证，不改成 MIT。
 
-本项目原创代码使用 [MIT](LICENSE)。阶段 0 未复制第三方缩减算法代码；测试中的 oracle 是人工编写的能力夹具，不是新发现的生产 bug。算法参考及赛事公开信息见 STATUS。
+本项目原创代码使用 [MIT](LICENSE)。算法概念参考 [The Debugging Book](https://www.debuggingbook.org/html/DeltaDebugger.html)；核心按本项目契约独立实现，没有复制其 Python 代码。测试 oracle 是人工编写的夹具，不是新发现的生产 bug。来源和赛事公开信息见 STATUS。

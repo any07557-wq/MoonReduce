@@ -36,7 +36,14 @@ async fn run_isolated(
     defer @async.protect_from_cancel(() => {
       stop_group(process.pid, startup_fallback=false)
     })
-    @async.with_timeout_opt(timeout_ms, () => process.wait())
+    // In the pinned runtime, with_timeout_opt can stall this nested wait until
+    // the outer watchdog fires. Use the raising timeout and map only that timer
+    // error to None; ordinary oracle exit codes keep their original meaning.
+    let result = Some(@async.with_timeout(timeout_ms, () => process.wait())) catch {
+      @async.TimeoutError => None
+      error => raise error
+    }
+    result
     // On timeout the wait task is cancelled; the process task remains in the
     // enclosing task group, which waits for it and reaps it after cleanup.
   })

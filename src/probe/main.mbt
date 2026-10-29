@@ -145,28 +145,32 @@ async fn run_probes(fixture : String) -> Unit {
 
   let tree_dir = work + "/tree"
   @fs.mkdir(tree_dir)
+  let tree_started = @async.now()
   assert_eq(
     run_isolated(spaced_executable, ["tree", tree_dir], tree_dir, 500),
     None,
   )
+  assert_true(@async.now() - tree_started < 5000)
   assert_eq(@process.run(spaced_executable, ["check-tree", tree_dir]), 0)
   assert_true(@fs.exists(tree_dir + "/reaped"))
   assert_true(@fs.exists(tree_dir + "/worker-reaped"))
   let hard_dir = work + "/hard"
   @fs.mkdir(hard_dir)
+  let hard_started = @async.now()
   assert_eq(
     run_isolated(spaced_executable, ["stubborn", hard_dir], hard_dir, 300),
     None,
   )
+  assert_true(@async.now() - hard_started < 5000)
   assert_eq(@process.run(spaced_executable, ["check-tree", hard_dir]), 0)
   println(
     "PASS timeout: process group stopped, ordinary children reaped, SIGKILL escalation",
   )
 
-  // A synchronous request is materialized and judged asynchronously, then fed back.
-  // The actual reducer state machine belongs to stage 1.
-  let request : @core.CandidateRequest = { id: 0, positions: [0, 2], }
-  assert_eq(request.positions, [0, 2])
+  // Exercise a real core request across an asynchronous process call.
+  let reducer = @core.Reducer::new(3)
+  let request = reducer.next().unwrap()
+  assert_eq(request.positions, [0, 1, 2])
   let status = @process.run(spaced_executable, ["exit", "0", candidate])
   let verdict : @core.Verdict = match status {
     0 => Interesting
@@ -175,9 +179,12 @@ async fn run_probes(fixture : String) -> Unit {
     _ => fail("execution error is not an oracle verdict")
   }
   match verdict {
-    Interesting => assert_eq(request.id, 0)
+    Interesting => assert_true(reducer.submit(request.id, verdict))
     _ => fail("request/feedback probe failed")
   }
+  assert_eq(reducer.snapshot().best_positions, Some([0, 1, 2]))
+  reducer.stop(BudgetExhausted)
+  assert_true(reducer.next() is None)
   println(
     "PASS synchronous core request -> async Native call -> synchronous feedback",
   )
