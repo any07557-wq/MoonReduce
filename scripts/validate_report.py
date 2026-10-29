@@ -71,6 +71,14 @@ def violations(data, validator):
     require(data["minimality_checked"] <= data["minimality_required"],
             "minimality_checked exceeds required")
     minimality = data["minimality"]
+    checked = data["minimality_checked"]
+    require(checked <= phases["minimality"],
+            f"minimality_checked={checked} exceeds tests_by_phase.minimality="
+            f"{phases['minimality']}; current-round checks require distinct actual starts")
+    if minimality == "not_checked":
+        require(checked == 0 and phases["minimality"] == 0,
+                "minimality=not_checked requires minimality_checked=0 and "
+                "tests_by_phase.minimality=0")
     if minimality in ("verified", "blocked_by_unresolved"):
         require(saved and data["minimality_checked"] == required,
                 "completed minimality check lacks saved result or full progress")
@@ -79,6 +87,8 @@ def violations(data, validator):
         require(data["minimality_reason"] == reason, "minimality reason mismatch")
     if minimality == "blocked_by_unresolved":
         require(data["had_unresolved"], "blocked minimality requires unresolved evidence")
+        require(checked > 0, "minimality=blocked_by_unresolved requires minimality_checked>0; "
+                "empty-result proof cannot be blocked by historical unresolved calls")
     if not saved:
         require(data["minimality_reason"] == "no_saved_interesting_result",
                 "unsaved result minimality reason mismatch")
@@ -91,6 +101,45 @@ def violations(data, validator):
     require(data["result_status"] == status, "result_status mismatch")
     if final in ("interesting", "not_interesting", "unresolved"):
         require(saved and phases["final"] == 1, "actual final verdict requires saved result and call")
+    # Initial/final observations and current-round singles refer to disjoint
+    # actual calls. Error/interrupted states can occur before spawn or after a
+    # verdict (e.g. diagnostic I/O failure); do not infer their terminal class.
+    observed = {"interesting": 0, "not_interesting": 0, "unresolved": 0}
+    evidence = {kind: [] for kind in observed}
+    for phase, field in [("initial", "initial_check"), ("final", "final_revalidation")]:
+        verdict = data[field]
+        if verdict in observed:
+            require(phases[phase] == 1,
+                    f"{field}={verdict} requires tests_by_phase.{phase}=1")
+            observed[verdict] += 1
+            evidence[verdict].append(f"{field}={verdict}")
+        elif verdict == "not_run":
+            require(phases[phase] == 0,
+                    f"{field}=not_run requires tests_by_phase.{phase}=0")
+    if saved:
+        require(data["initial_check"] == "interesting",
+                "output_saved=true requires initial_check=interesting")
+    lower = observed.copy()
+    if saved and data["best_segments"] is not None and data["best_segments"] < original:
+        lower["interesting"] += 1
+        evidence["interesting"].append("best_segments < original_segments (saved improvement)")
+    if minimality == "verified" and checked:
+        lower["not_interesting"] += checked
+        evidence["not_interesting"].append(f"minimality_checked={checked} with minimality=verified")
+    elif minimality == "blocked_by_unresolved":
+        lower["unresolved"] += 1
+        evidence["unresolved"].append("minimality=blocked_by_unresolved (current-round witness)")
+    for kind, minimum in lower.items():
+        require(data[kind] >= minimum,
+                f"{kind}={data[kind]} < {minimum} required by " + "; ".join(evidence[kind]))
+    # Every accepted current-round single is NI or U; I would reset progress.
+    # Partial/U rounds do not reveal the exact NI/U split. Reserve endpoints
+    # first so their verdicts cannot also serve as deletion evidence.
+    remaining = (data["not_interesting"] + data["unresolved"] -
+                 observed["not_interesting"] - observed["unresolved"])
+    require(remaining >= checked,
+            f"not_interesting + unresolved after reserving initial_check/final_revalidation "
+            f"observations = {remaining} < minimality_checked={checked}")
     if data["stop_reason"] != "execution_error":
         require(data["error"] is None, "non-error stop contains execution error")
     if data["stop_reason"] in ("completed", "budget_exhausted", "unresolved"):

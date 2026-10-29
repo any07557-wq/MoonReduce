@@ -313,6 +313,29 @@ C 已提交为 8478f90（test: validate JSON report contracts），实际历史�
 
 仍满足原 v0.1 工程交付范围，保持 Ready for local v0.1 review：仅实际验证的 WSL2 Ubuntu 26.04／Linux x86_64 Native；没有新增平台／随机故障／沙箱承诺。人工缺陷、无外部采用及差异化有限等材料原样保留。达到数量后不再扩展 E 或替代项；没有 push、标签、包／Release 发布或报名。提交数量达标与工程 Ready 均不代表月赛审核通过。
 
+## P2 修复：报告计数与证明一致性
+
+本次从 dcfe4bb780154ad23d025dc15b797e6a9a446697（10 次提交、干净工作区）开始，适用 AGENTS.md 仍无。原源码包、SHA-256、SOURCE_COMMIT、评审说明和两份矛盾副本保留在 .repos/deliveries/dcfe4bb780154ad23d025dc15b797e6a9a446697；全部文件 SHA-256 清单在修复前后比对一致，不改写旧评审结论。
+
+### 根因与语义依据
+
+离线校验只检查阶段／分类总和及 checked=required，没有关联明确判定、实际阶段调用与证明进度。按旧 REVIEW.md 的两个原始命令重现，均实际 PASS/0；同命令修复后均 FAIL/1，具体指出 interesting=0 不足以覆盖初始、最终及缩小改进，或 minimality_checked=3 超过 tests_by_phase.minimality=0。前后命令、退出码和完整 stdout/stderr 分别留存在 .repos/review-fixes/report-counter-proof-20261029/before.json 与 after.json。
+
+已核对 native/oracle.mbt、driver.mbt、report.mbt、core/reducer.mbt 和 SPEC：受控启动成功才计数（exec 失败仍是已启动的执行错误），启动失败另计 launch_failures；每次已启动调用只有一个终结分类。核心不缓存、不复用搜索或旧轮证明；单删 I 改进清零当前轮，只有 NI/U 增加 checked，累计阶段调用还包含旧轮、I 改进、失败和中断，所以当前进度只要求不超过累计调用。
+
+新增校验：明确初始／最终三态分别要求一次对应阶段启动，按不同调用累加类别下界；not_run 阶段零启动；已保存结果需初始 I，缩小还需额外 I；当前单删进度不超过实际单删阶段数，verified 需对应 NI，blocked 需本轮 U，当前进度的 NI/U 与初始／最终判定不能重复计数。空证明可零调用，not_checked 零进度／零单删启动；error／interrupted 不按名称推断启动或分类，保留启动前失败、取得判定后 IO 错误等合法状态。具体推导和局限已补入 SPEC 与 report-contract.md，Schema 版本／字段／运行时含义不变。
+
+### 实际验证与边界
+
+- python3 scripts/check_report_contract.py：30 份即时真实报告覆盖全部九种停止原因，含三种空结果来源、部分单删预算、最终 NI/U、未执行复验、启动失败、诊断 IO 错误和单删改进重启；算法实录与原 21 份负例继续通过。新增 19 项关联变异保持 Schema 和计数总和合法，并逐项检查特定字段诊断、CLI 返回 1；校验器 0/1/2、NaN 拒绝也通过。完整输出在 contract-regression-final.stdout/stderr。
+- 两个旧问题的原始复现命令：修复前各 0，修复后各 1；输出明确命中具体矛盾，而非依赖无关字段失败。
+- 另生成并保存真实 CLI 报告：21→4 字节，7 次启动，最终 I／minimality=verified；独立 oracle 与 python3 scripts/validate_report.py 校验各返回 0，原文件不变。实际命令／输出在 cli-check.json，报告在 cli/report.json。
+- python3 scripts/validate_report.py docs/report.example.json、python3 -m py_compile scripts/validate_report.py scripts/check_report_contract.py、git diff --check 通过。
+
+上述新证据位于 .repos/review-fixes/report-counter-proof-20261029，不进入源码提交。没有发现 CLI 自行生成同类矛盾报告，未修改核心、Native 生成器或依赖；无需重复全部核心算法和进程故障矩阵，本次未重跑该完整矩阵。校验器只能拒绝结构及可推导的必要关系矛盾，不能证明 oracle 实际执行、报告未被伪造或判定稳定，也不能替代外部复验。
+
+本次提交主题 fix: enforce report counter and proof consistency，提交后历史数为 11，原基线保留。按既有 check_source_package.py 流程为本修复 HEAD 生成新源码包、SHA-256 和 SOURCE_COMMIT，执行解包 Release 构建、最短例及包内校验器验证；最终 hash、包路径和结果在交付回复及新 .repos/deliveries/<完整HEAD>/ 留存记录中给出，不覆盖 dcfe4bb 的材料，不为产物增加提交。实现者自审问题已修复；独立评审应针对本修复提交，外部独立评审仍待执行。没有 push、标签或发布，工程评审仍不代表赛事审核结果。
+
 ## 公开事实与相关工作
 
 以下为 2026-10-29 查阅结果，不是报名或资格判断。浏览连接器未返回结果后改用网页工具和官方公开源码；部分动态页面/包文档无法抓取，具体限制如下。
