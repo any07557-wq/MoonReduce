@@ -277,7 +277,7 @@ SDK 实际报告 moon/moonrun 0.1.20261012（748b63c）、moonc v0.10.15+943464b
 
 README 补齐实际 JSON、1-minimal、固定安装、演示与范围；SUBMISSION 一页材料分别说明值得做／做得对／做得完，保留人工缺陷、无采用及差异化有限。阶段 5 验收通过，停止于本地 v0.1 评审材料，不自动对外发布。
 
-## 提交数量与交付完善（进行记录）
+## 提交数量与交付完善
 
 本任务开始于 611b9bf0f1b45bf3d5450a183e289064070d6c0e，git status --short 为空，git rev-list --count HEAD 实际为 6。已读取 README／SPEC／STATUS 和适用 AGENTS.md（无），保留全部历史，不重写、不空提交、不改核心算法。检查后 A–D 均有实质缺项，按顺序完成四个逻辑单元；数量达到 10 后停止，不再扩展 E 或替代项。
 
@@ -298,6 +298,20 @@ A 已提交为 aff7523（feat: add environment diagnostics），实际历史数 
 B 已提交为 51b3878（docs: add executable oracle templates and guide），实际历史数 8。C 为现有 schema_version=1 补充 JSON Schema 与离线跨字段检查，不改运行时字段、核心算法或 CLI 依赖；开发校验复用当前已安装的 jsonschema 4.19.2。
 
 实际执行 python3 scripts/check_report_contract.py 通过：复用阶段 3 真实 fixture 与启动计数，校验 20 份即时报告（覆盖全部九种停止原因、空结果、预算、U、最终 NI/U、超时、各阶段中断／进程回收）及已保存算法实录；21 份矛盾副本均被拒绝，另验证 NaN 拒绝和校验器 0/1/2 退出状态。python3 scripts/validate_report.py docs/report.example.json、Python 语法及 git diff --check 通过。历史单删证据与最终复验分开解释，没有把静态自洽当作 oracle 复验。本单元提交主题 test: validate JSON report contracts，提交后历史计数为 9。
+
+### D：已提交源码快照打包
+
+C 已提交为 8478f90（test: validate JSON report contracts），实际历史数 9。D 新增 package_source.py、解包构建回归与交付指南，从 Git 对象生成本地源码包，记录完整 SOURCE_COMMIT，附 SHA-256；相同 commit 两次打包字节一致。仅允许必要源码／文档类型，排除构建、缓存、日志、运行结果、凭证路径，不跟随链接或子模块，不打包未提交修改，不上传或发布。
+
+实际执行 python3 scripts/check_source_package.py --work-dir /tmp/moonreduce-distribution-precommit-20261029b：来源 8478f90ea876130e08815f7d8daf277601e931a4，两次归档、SHA-256、源码对象比对、排除规则、已有产物拒绝且不变、无效 ref 失败、可执行位与全新解包目录 Release 构建均通过。最短例 21→4 字节，7 次实际启动，原文件不变，最终 I／最小性 verified；外部重新调用 I，单删为空明确 NI。source-distribution.md 首个 sh 块原样执行通过；Python 语法、新增本地文档链接和 git diff --check 通过。仍可见已记录的上游 thread_pool.c C 警告，不影响构建；未改依赖或压低 MoonBit 警告标准。
+
+此次使用已固定的同一 SDK 与注册表缓存，源码／_build 均来自新目录；不把它写成重新安装工具链或外部人员验收。本单元为 build: add verified source distribution packaging，提交后历史计数为 10；最终完整 HEAD 是该提交，可用 git rev-parse HEAD 读取，确切 hash 与提交后 git status 在本次交付回复记录，避免在提交内容中伪造自身 hash。交付前还会以最终 HEAD 运行同一打包回归，令本地最终源码包包含本单元文件。
+
+### 本任务结论
+
+实际提交数由 6 增至 10，新增四个非空完整改动：aff7523 环境诊断、51b3878 可执行 oracle 模板、8478f90 报告契约、本提交源码交付包。没有重写历史、空提交或修改 ddmin。全部运行结果和适用命令见上文；本任务没有重跑未改动的全部阶段 0–5 矩阵，其历史验证保留原记录。本次临时交付物和运行结果均在 /tmp，未提交产物；提交前仅有本任务文件修改，最终工作区状态在交付回复给出。
+
+仍满足原 v0.1 工程交付范围，保持 Ready for local v0.1 review：仅实际验证的 WSL2 Ubuntu 26.04／Linux x86_64 Native；没有新增平台／随机故障／沙箱承诺。人工缺陷、无外部采用及差异化有限等材料原样保留。达到数量后不再扩展 E 或替代项；没有 push、标签、包／Release 发布或报名。提交数量达标与工程 Ready 均不代表月赛审核通过。
 
 ## 公开事实与相关工作
 

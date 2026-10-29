@@ -87,6 +87,8 @@ python3 scripts/check_stage4.py _build/native/release/build/cmd/moonreduce/moonr
 
 ## 已实跑的构建和缩减示例
 
+需要离线传递源码时，可从已提交快照[生成带来源 commit 与 SHA-256 的本地源码包](docs/source-distribution.md)：`python3 scripts/package_source.py /tmp/moonreduce-source-dist`。`python3 scripts/check_source_package.py` 会在新目录解包、构建并运行下述最短示例；使用固定 SDK 和已有注册表缓存，不上传、不发布。
+
 下面用人工 BUG 标记保留基础 CLI 回归，不是生产 bug，也不承担算法调试案例的论证；完整案例见上面的 examples。构建后运行的 Native 文件名由 MoonBit 生成为 moonreduce.exe：
 
 ```sh
