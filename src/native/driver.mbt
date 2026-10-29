@@ -5,10 +5,7 @@ pub async fn run(config : Config) -> Int32 {
   let paths = prepare(config)
   let source = @fs.read_file(paths.input).binary()
   let segments = @lines.split(source)
-  reserve(paths.report)
   let mut report_written = false
-  defer (if !report_written { @fs.remove(paths.report) })
-  reserve(paths.output)
   let self : Run = {
     config,
     paths,
@@ -19,12 +16,13 @@ pub async fn run(config : Config) -> Int32 {
     tests_started: 0,
     launch_attempts: 0,
     launch_failures: 0,
-    phase_counts: {},
+    phase_counts: { "initial": 0, "search": 0, "minimality": 0, "final": 0 },
     interesting: 0,
     not_interesting: 0,
     unresolved: 0,
     timeouts: 0,
     oracle_errors: 0,
+    interrupted_tests: 0,
     initial_check: "not_run",
     final_revalidation: "not_run",
     stop_reason: "execution_error",
@@ -44,11 +42,13 @@ pub async fn run(config : Config) -> Int32 {
       error => self.record_error(error)
     }
   })
-  if outcome is None {
+  if outcome is None || @async.is_being_cancelled() {
     self.interrupted = true
     if self.error is None {
       self.stop_reason = "interrupted"
-      self.search_stop_reason = "interrupted"
+      if self.phase != "final" {
+        self.search_stop_reason = "interrupted"
+      }
       if self.phase == "final" && self.final_revalidation == "not_run" {
         self.final_revalidation = "interrupted"
       } else if self.phase == "initial" && self.initial_check == "not_run" {
@@ -58,17 +58,35 @@ pub async fn run(config : Config) -> Int32 {
     self.reducer.stop(Interrupted)
   }
   @async.protect_from_cancel(() => {
-    if !self.output_saved {
-      @fs.remove(paths.output) catch {
-        error => self.record_error(error)
-      }
-    }
     try self.write_report() catch {
       error => self.record_error(error)
     } noraise {
       _ => report_written = true
     }
-    self.print_summary(report_written~)
+    self.print_summary(report_written~) catch {
+      error => {
+        self.record_error(error)
+        // A closed stdout pipe must not leave a JSON exit_code=0 while the CLI
+        // returns 4. Revise only the report this invocation already published.
+        if report_written {
+          self.write_report(replace=true) catch {
+            error => {
+              self.record_error(error)
+              @fs.remove(paths.report) catch {
+                error => self.record_error(error)
+              }
+            }
+          }
+        }
+        @stdio.stderr.write(
+          "MoonReduce: execution_error; exit code: 4; " +
+          self.error.unwrap_or("summary write failed") +
+          "\n",
+        ) catch {
+          _ => ()
+        }
+      }
+    }
     self.exit_code()
   })
 }
@@ -94,7 +112,7 @@ async fn Run::execute(self : Run) -> Unit {
     if verdict == Interesting {
       // Publish before committing the core best, preserving the previous best
       // and its report metadata if the atomic write fails.
-      atomic_write(self.paths.output, bytes)
+      atomic_write(self.paths.output, bytes, replace=self.output_saved)
       self.reducer.submit(request.id, verdict) |> ignore
       self.output_saved = true
     } else {
@@ -146,7 +164,12 @@ async fn Run::execute(self : Run) -> Unit {
 
 ///|
 fn Run::record_error(self : Run, error : Error) -> Unit {
-  self.error = Some(error_message(error))
+  self.error = Some(
+    match self.error {
+      None => error_message(error)
+      Some(first) => first + "; additionally: " + error_message(error)
+    },
+  )
   self.stop_reason = "execution_error"
   if self.phase == "final" {
     if self.final_revalidation == "not_run" {

@@ -1,6 +1,6 @@
 # 实际状态与事实记录
 
-记录日期：2026-10-29（Asia/Shanghai）。阶段 0、1 已验收，阶段 2 已打通 Native CLI 主流程及代表性失败处理；不代表最终可发布或比赛审核通过。阶段 3 的完整执行边界和报告矩阵尚未验收。
+记录日期：2026-10-29（Asia/Shanghai）。阶段 0–3 已验收，当前完成 Native CLI 执行限制、可靠保存、进程清理和报告矩阵；不代表最终可发布或比赛审核通过。实际调试案例、独立消费工程和干净环境验收尚未完成。
 
 ## 阶段 0 已完成（历史记录）
 
@@ -135,6 +135,45 @@
 
 本阶段结论：从文件输入到输出复验的整条 CLI 主流程已闭合，代表性失败处理和嵌套超时回归通过；不是最终发布验收。基础 JSON 已可使用，参数／路径预检尚未安全预留报告时仅写 stderr，不创建 JSON。执行边界与报告的完整故障注入、各种中断时机和资源失败组合留给阶段 3，未验证的路径不视为通过。
 
+## 阶段 3 执行限制、保存和报告
+
+开始时读取 SPEC、STATUS、PLAN、Git 根／状态和适用 AGENTS.md；main 干净，前置提交为 63b97a3（feat: add line-based reducer CLI and oracle runner），没有新增 AGENTS.md、无关改动或真实前置阻塞。本阶段未改变工具链、依赖或运行系统工具，未进入阶段 4。
+
+实际发现并修复：
+
+1. 原 runner 在组长正常退出后遇到 kill 辅助程序启动失败，只报错，没有执行组强制终止后备。测试专用 LD_PRELOAD 将真实 posix_spawn(/usr/bin/kill) 注入 EACCES，独立观察到子进程仍存活；失败后的脚本补救清理不算通过证据。现在所有组清理路径都尝试现有 async 的 hard_cancel 后备，同时保留执行错误。正常退出遗留子进程、超时及 Ctrl-C 同时遇到辅助启动失败的回归均验证 PID 消失；中断加清理错误为退出 4 且 interrupted=true。
+2. 真实目录权限拒绝显示，预留的空输出在首次保存失败后可能也无法删除。取消输出／报告的空占位预留：先写完并关闭同目录独占临时文件，首次以不覆盖目标的原子 rename 发布，后续仅替换本次已保存的最佳。无首次保存就无空输出／报告；并发创建的目标原样保留。注入先部分 pwrite 再 ENOSPC，确认旧最佳逐字节不变且临时文件清除；保存过程中外部 SIGINT 仍交付完整已确认候选。
+3. stdout 管道提前关闭时，原 CLI 实际退出 4，但 JSON 仍为 completed/0。现在摘要写入失败后原子更新本次报告为 execution_error/4，保留此前取得的目标／最小性证据，不追加 oracle 调用；真实 Broken pipe 回归通过。
+4. 调用分类补齐无判定错误和中断，不再把取消当 oracle 异常；该工具链的 errdefer 也在取消时运行，因此用 Result 边界区分实际异常与取消。tests_started 等于三态、oracle_errors、interrupted_tests 之和；启动器失败另列 launch_failures。外部 libc 启动计数器和每次 oracle 的独立日志共同核对实际启动与四阶段分项。保留复验前 search_stop_reason，最终中断不抹去 completed/budget_exhausted。
+5. 诊断读取失败也必须清除本轮临时目录。复验 oracle 改写输出时尽可能恢复已保存字节并报错，不把恢复当成复验。报告增加工具 exit_code、计数对象、requested_output、result_status、only_previously_observed_interesting 和 minimality_reason；摘要对“仅曾 Interesting”明确说明最小性只是此前检查的证据。
+
+预算仍为所有实际受控启动（包含初始和最终）合计；无缓存。搜索／单删仅在 tests_started < max_tests - 1 时启动，最后一次预留输出路径复验。通过从预算 2 到正常所需次数再多一次的每个边界：不足时退出 1、最终实际 Interesting、最小性不 verified；恰好完成证据与复验时即使达到上限仍为 completed/0。初始空输入预算 2 可完整验证，单行可删空与不可删空也覆盖。
+
+| 阶段 3 最终实际命令 | 结果 |
+| --- | --- |
+| moon check --target native --deny-warn | 通过 |
+| moon test --target native --deny-warn | Debug：21 个测试通过，包含核心独立黑盒／穷举后置条件检查 |
+| moon test --target native --release --deny-warn | Release：同一套 21 个测试通过 |
+| moon build --target native --deny-warn | 通过；由阶段 0/2/3 脚本实际执行 |
+| moon build --target native --release --deny-warn | 通过 |
+| python3 scripts/check_stage0.py | 完整探针通过，含版本、核心 Wasm check、原文件／进程能力、外部 SIGINT 和格式检查 |
+| python3 scripts/check_stage2.py | Debug 主流程、字节、路径／参数、失败处理及 500ms 嵌套超时回归通过 |
+| python3 scripts/check_stage2.py _build/native/release/build/cmd/moonreduce/moonreduce.exe | 相同矩阵 Release 通过 |
+| python3 scripts/check_stage3.py | Debug 可靠性和报告矩阵通过 |
+| python3 scripts/check_stage3.py _build/native/release/build/cmd/moonreduce/moonreduce.exe | 相同矩阵 Release 通过 |
+
+阶段 3 黑盒矩阵覆盖：
+
+- 正常完成、零字节结果、预算恰好耗尽／不足、初始 NI/U；实际调用计数、分项、分类、摘要、JSON 与 CLI 退出码相互核对。
+- 搜索超时、部分历史 U 后仍能完整证明、全部严格子候选 U、最终 NI/U/超时／异常；最终失败优先于预算，原搜索停止原因保留，已保存输出仅标为此前证据。
+- 最终单删得到 Interesting 后继续缩减并重置证明，或随即预算耗尽而交付已保存的改进；人工变化可判断性的 fixture 只用于协议分支验证，不代表对随机 oracle 稳定性的承诺。
+- 普通三层树、忽略 TERM 的直接 oracle 与子进程、组长已退出遗留子进程；超时和四阶段 SIGINT 均检查 /proc PID 消失。普通树另检查父、子 wait 标记；被 KILL 的父进程无法再 wait，其孤儿后代由本环境 init/reaper 回收，未冒称 MoonReduce 自己是 subreaper。
+- 首次／改进输出权限失败、报告权限失败、候选修改、诊断读取失败、实际启动器失败、oracle exec 失败及组信号辅助程序失败；已保存最佳和原输入安全，不能写报告时 stderr 明示退出 4。
+- 每流 32 MiB stdout/stderr 文件重定向，诊断每流实际 4096 字节并标截断，报告保持有界；所有正常／已测故障完成后临时候选、日志和原子写入文件均无泄漏。没有设置日志磁盘配额。
+- 测试库只在临时目录构建，用于外部计数和故障注入，不链接 CLI、不新增运行依赖；每次进程调用均设合理看门狗，失败补救清理不计入验收证据。
+
+验收结论：本阶段通过。关键清理与复验语义由真实进程、权限故障及外部计数核实，没有放宽通过条件、以 mock 代替进程或把尚未执行的案例标成通过。SPEC、README 与 PLAN 已同步。阶段 4 的实际开发者调试流程、独立 MoonBit 消费工程及阶段 5 干净环境复现仍未验证。
+
 ## 公开事实与相关工作
 
 以下为 2026-10-29 查阅结果，不是报名或资格判断。浏览连接器未返回结果后改用网页工具和官方公开源码；部分动态页面/包文档无法抓取，具体限制如下。
@@ -152,10 +191,10 @@
 
 ## 验收结论、限制和下一步
 
-阶段 0 的文件/进程能力、阶段 1 的纯核心和阶段 2 的 Native CLI 主流程均已验证；完整 v0.1 尚未通过最终发布验收。按阶段 2 的 4 小时 prompt 调整后，计划 21 小时并保留约 2 小时缓冲，仍在三天预算内。
+阶段 0 的文件／进程能力、阶段 1 的纯核心、阶段 2 的 CLI 主流程及阶段 3 的可靠性和报告矩阵均已通过；完整 v0.1 尚未通过最终发布验收。计划仍为 21 小时并保留约 2 小时缓冲，本阶段在约 4 小时预算内完成，三天预算仍可信。
 
-原进程探针只把 kill 的 0/1 当作成功/通常已消失；阶段 2 Native runner 已严格区分已消失与其他失败。完整辅助错误注入仍未验证。已验证普通继承进程组的树；不承诺恶意 setsid 脱离、不可中断内核等待或 SIGKILL 后用户态清理。
+原历史探针对 kill 0/1 的宽松判断不作为正式 runner 的语义。Native runner 已严格区分 ESRCH 和其他失败，并通过正常、超时、中断三种清理上下文的辅助启动失败注入。强制终止孤儿后代的最终回收依赖实际环境 init/reaper；普通非 WSL Linux 及其他容器 init 行为未验证。不承诺恶意 setsid 脱离、不可中断内核等待、SIGKILL 或断电后的用户态清理。
 
-实际调用预算、最佳文件保存、基础 JSON/摘要及输出路径复验已实现并有代表性验收；完整边界／报告矩阵未验证。普通非 WSL Linux、新装工具链/干净环境、独立消费工程和真实开发者调试流程仍未验证。当前示例为人工标记，不是新发现的生产 bug；不承诺全局最短或随机 oracle 稳定性。
+保存和 JSON 分别原子发布，不是跨文件事务、不承诺断电持久化；日志不设磁盘配额。必要文件无法操作时可能无法写出报告，明确以 stderr 和退出码 4 报错。新装工具链／干净环境、独立消费工程和实际开发者调试流程仍未验证。当前 BUG 标记示例与故障 fixture 都是人工案例，不是新发现的生产 bug；不承诺全局最短或随机 oracle 稳定性。
 
-下一阶段入口：等待用户阶段 3 prompt，专门验收和修复执行边界与报告；本阶段结束后停止，不提前进入下一阶段。
+下一阶段入口：等待用户阶段 4 prompt，完成可复现开发者调试流程与独立 MoonBit 消费工程；本阶段结束后停止，不提前进入下一阶段。

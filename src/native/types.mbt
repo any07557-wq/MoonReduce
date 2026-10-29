@@ -45,6 +45,7 @@ priv struct Run {
   mut unresolved : Int32
   mut timeouts : Int32
   mut oracle_errors : Int32
+  mut interrupted_tests : Int32
   mut initial_check : String
   mut final_revalidation : String
   mut stop_reason : String

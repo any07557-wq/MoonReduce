@@ -70,21 +70,13 @@ async fn prepare(config : Config) -> Paths {
 }
 
 ///|
-async fn reserve(path : String) -> Unit {
-  @async.protect_from_cancel(() => {
-    try @fs.create(path, permission=0o600) catch {
-      @os_error.OSError(_) as error if error.is_EEXIST() =>
-        raise UsageError("refusing existing output/report: \{path}")
-      error => raise error
-    } noraise {
-      file => file.close()
-    }
-  })
-}
-
-///|
-/// Only destinations exclusively reserved by this invocation may be replaced.
-async fn atomic_write(path : String, data : &@io.Data) -> Unit {
+/// Publish the first complete file without replacing an existing destination.
+/// Only later improvements of this invocation's output may replace it.
+async fn atomic_write(
+  path : String,
+  data : &@io.Data,
+  replace~ : Bool = true,
+) -> Unit {
   @async.protect_from_cancel(() => {
     let random = match @env.rand(16) {
       Some(bytes) => bytes
@@ -98,7 +90,7 @@ async fn atomic_write(path : String, data : &@io.Data) -> Unit {
     file.write(data)
     file.close()
     closed = true
-    @fs.rename(staged, path, replace=true)
+    @fs.rename(staged, path, replace~)
   })
 }
 

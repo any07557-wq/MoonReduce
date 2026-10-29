@@ -56,6 +56,30 @@ elif mode in {"tree", "tree-worker"}:
         staged.rename(evidence / "worker-pids.json")
     while True:
         time.sleep(1)
+elif mode in {"stubborn-tree", "stubborn-worker"}:
+    evidence = Path(sys.argv[2])
+    if mode == "stubborn-worker":
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        (evidence / "worker-ready").write_text(str(os.getpid()))
+    else:
+        child = subprocess.Popen([sys.executable, __file__, "stubborn-worker", str(evidence)])
+
+        def wait_for_stubborn_child(_signum, _frame):
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            child.wait()
+            (evidence / "reaped").write_text("stubborn child reaped")
+            sys.exit(0)
+
+        signal.signal(signal.SIGTERM, wait_for_stubborn_child)
+        deadline = time.monotonic() + 3
+        while not (evidence / "worker-ready").exists():
+            if time.monotonic() >= deadline:
+                raise TimeoutError("stubborn child startup")
+            time.sleep(.01)
+        (evidence / "pids.json").write_text(json.dumps([os.getpid(), child.pid]))
+        (evidence / "ready").write_text("ready")
+    while True:
+        time.sleep(1)
 elif mode == "stubborn":
     # Direct oracle ignores TERM, requiring KILL. No orphan grandchildren.
     signal.signal(signal.SIGTERM, signal.SIG_IGN)

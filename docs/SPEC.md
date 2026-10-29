@@ -1,6 +1,6 @@
 # MoonReduce v0.1 行为规格
 
-本文件是交付目标，不是最终发布声明。当前阶段 2 已打通 Native CLI 主流程；阶段 3 的完整执行边界和报告矩阵尚未验收，验证进度见 [STATUS.md](STATUS.md)。
+本文件是交付目标，不是最终发布声明。当前已通过阶段 3 的执行限制、保存、清理和报告矩阵；实际调试案例、独立消费工程及干净环境验收尚未完成，验证进度见 [STATUS.md](STATUS.md)。
 
 ## 范围与采用理由
 
@@ -22,10 +22,10 @@ moonreduce failing.txt --output reduced.txt --report report.json \
 - 每次通过参数数组执行 `[command, fixed_args..., absolute_candidate_path]`。候选路径**追加为最后一个参数**；不替换占位符，不拼接 shell 命令，不隐式运行 shell。
 - 保持启动 MoonReduce 时的工作目录与环境，stdin 为 `/dev/null`。隔离的是候选文件及其日志目录，不改变 oracle 的 cwd；临时目录不是沙箱。
 - 命令含 `/` 时按启动目录解析；不含 `/` 时允许 PATH 搜索。参数不能含 NUL；不承诺表示非 UTF-8 文件名。文件内容始终使用字节。
-- 输出、报告路径必须互异且不能指向输入路径；已有目标拒绝。v0.1 不提供覆盖已有文件的选项。预先检查并以独占创建避免覆盖竞争；只替换本次运行已经拥有的目标。
+- 输出、报告路径必须互异且不能指向输入路径；已有目标拒绝。v0.1 不提供覆盖已有文件的选项。先检查路径，首次发布完整输出／报告时使用不覆盖目标的原子 rename，避免检查后被其他进程创建文件的竞争；只替换本次已经发布的输出或报告。不提前创建空占位文件。
 - 输入以 realpath 解析；输出/报告的父目录规范化，以 /usr/bin/test 的 -ef（设备和 inode）比较已有文件身份，覆盖硬链接与符号链接；不跟随最终符号链接的存在性检查也会拒绝悬空符号链接。输入本身可以是指向普通文件的符号链接。
-- 无已知 Interesting 输入时不创建反例输出；如需提前预留文件名，应撤销本次空预留。报告可在没有输出的情况下存在。无权写报告时打印 stderr 并以执行错误退出，不伪称报告已保存。
-- 参数／路径预检或初始读文件阶段，若尚未安全预留报告目标，仅向 stderr 报错，不创建 JSON。运行阶段的初始拒绝、oracle 错误、预算停止、最终复验和中断会写报告；已有文件冲突绝不以报告写入为由覆盖目标。
+- 无已知 Interesting 输入时不创建反例输出；首次保存失败也不留下空占位输出。报告可在没有输出的情况下存在。无权写报告时打印 stderr 并以执行错误退出，不伪称报告已保存。
+- 参数／路径预检或初始读文件阶段尚未建立运行上下文，仅向 stderr 报错，不创建 JSON。运行阶段的初始拒绝、oracle 错误、预算停止、最终复验和中断会尝试写报告；已有文件冲突绝不以报告写入为由覆盖目标。并发创建目标导致发布失败为运行执行错误（4），与启动前发现已有目标的用法错误（2）区分。
 
 ## Oracle 结果与执行错误
 
@@ -45,7 +45,7 @@ oracle 的退出码与 MoonReduce 自身退出码是两个独立接口。
 
 v0.1 面向确定、可重复的 oracle。目标行为会改变或随机出现的故障超出承诺范围；一次最终复验或少量重复调用不能证明绝对稳定。
 
-判断程序应只读候选文件。驱动在判定后核对原始候选字节，检测到候选内容被修改时作为执行错误，避免把不同内容的结果当作删除候选的证据。
+判断程序应只读候选文件。驱动在判定后核对原始候选字节，检测到候选内容被修改时作为执行错误，避免把不同内容的结果当作删除候选的证据。若复验中的输出被改写，尽可能原子恢复此前保存的最佳字节，再报执行错误；恢复不是复验，不宣称恢复后的目标行为已通过本次检查。
 
 ## 行与字节
 
@@ -55,7 +55,7 @@ v0.1 面向确定、可重复的 oracle。目标行为会改变或随机出现�
 
 ## 核心与缩减语义
 
-核心不导入文件、时钟或进程库。采用同步候选请求/反馈边界：核心给出候选 ID 与位置；Native 驱动物化文件、await 进程判定，再把同一 ID 的判定送回核心。执行错误和中断由驱动停止流程，不伪装成三态结果。不需要同步回调内部嵌套事件循环；库用户的同步包装可在后续阶段按需提供。
+核心不导入文件、时钟或进程库。采用同步候选请求/反馈边界：核心给出候选 ID 与位置；Native 驱动物化文件、await 进程判定，再把同一 ID 的判定送回核心。执行错误和中断由驱动停止流程，不伪装成三态结果。不需要同步回调内部嵌套事件循环；库用户可直接使用下述同步包装。
 
 初始输入必须经过一次真实 Interesting 检查后才进入搜索并保存初始最佳结果。只有严格更小且为 Interesting 的候选可以替换最佳结果；NotInteresting 和 Unresolved 均不能替换。不假定单调性；不根据某一候选的结果推导其他候选。任何真正改进后使旧的最小性证据失效。
 
@@ -89,12 +89,23 @@ ddmin 的分块及候选顺序固定、可重复：当前有序序列分为连�
 
 `--max-tests N` 包含初始检查、搜索、单元素检查及最终复验，N 至少为 2。每次判断调用的受控启动成功后计入 `tests_started`；Linux 路径中是启动将 exec oracle 的 setsid 进程，exec 失败仍记录为该次启动并作为执行错误停止。辅助的 kill 进程不算判断次数。另记 `launch_attempts` 与 `launch_failures`，不把无法启动辅助启动器的尝试伪称为已实际运行的 oracle。计数的对象与启动失败阶段必须写入报告。
 
+报告固定 tests_counting_unit=controlled_launcher_start。tests_by_phase 总是包含 initial/search/minimality/final 四个整数（包括零）。每次受控启动恰有一个终结分类，满足：
+
+```text
+tests_started = interesting + not_interesting + unresolved + oracle_errors + interrupted_tests
+tests_started = initial + search + minimality + final
+launch_attempts = tests_started + launch_failures
+timeouts <= unresolved
+```
+
+oracle_errors 统计已启动、但因异常退出、信号、候选内容错误或执行／清理失败而没有可用判定的调用；interrupted_tests 统计未取得判定就被取消的调用。启动前失败不混入这两个计数。计时器到期即记 Unresolved 和 timeout；后续清理失败仍使工具整体报执行错误，不重复计算该次启动。判定后保存或诊断读取错误也可以使整体执行错误，而不撤销已观察到的判定计数。
+
 初始检查可占用第 1 次；其后只有 `tests_started < N - 1` 时才启动搜索或单元素检查。最后 1 次始终预留给**输出文件的最终实际复验**，不能被隐藏复验占用或超预算。
 
 - N=2，非空初始输入 Interesting：直接交付初始最佳文件并实际复验，`budget_exhausted`，不能称已验证最小性。
 - N=2，空初始输入 Interesting：没有单元素可删，复验 Interesting 后可以完整验证。
 - 初始结果 1/2：分别报告初始不满足/无法判断，不进入缩减，无反例输出，不消耗预留的最终调用。
-- 正常搜索结束、检查受 Unresolved 阻碍或预算耗尽：原子保存最佳输出后，以**输出路径**再次实际调用 oracle；不是只测试之前的候选路径。工具不在复验后改写输出内容。
+- 正常搜索结束、检查受 Unresolved 阻碍或预算耗尽：原子保存最佳输出后，以**输出路径**再次实际调用 oracle；不是只测试之前的候选路径。复验 Interesting 后不再改写输出；检测到 oracle 改写输出的错误恢复遵守前述契约。
 - 最终 1/2、超时或执行错误：不发成功结论。文件仅为此前已知 Interesting 的候选，报告本次复验失败/不确定。
 - 执行错误后停止启动判断调用；中断后优先保存已知结果与清理进程。此时可不执行最终复验，必须明确 `not_run`/`interrupted`。预留调用不是在错误或中断后继续运行的授权。
 
@@ -106,11 +117,13 @@ v0.1 首先不实现缓存；报告 `cache_enabled=false`、`cache_hits=0`。如
 
 Native 驱动使用已验证的 `moonbitlang/async@0.22.4` 进程与文件 API；Linux 依赖 `/usr/bin/setsid`（util-linux）建立独立会话/进程组、`/usr/bin/kill`（procps-ng）发送组信号，另用 `/usr/bin/test -ef` 比较文件身份。固定使用已验证的 `with_timeout`，只捕获其 TimeoutError；不使用 `with_timeout_opt` 的旧嵌套等待路径，也不使用系统 timeout 的保留退出码判断超时。
 
-单次计时从受控进程启动返回后开始，到进程结束为止；超时后先对进程组发送 TERM，100ms 宽限后发送 KILL，等待并回收直接判断进程。清理处于不可取消区，组长提前退出也不能取消剩余组清理；正常结束也清理遗留组成员。组已消失可立即结束清理。启动与 setsid 建组间的取消竞争有直接 PID 终止后备。kill 使用实测可处理较小负组 ID 的短信号形式（-TERM/-KILL），固定 LC_ALL=C 并仅把明确 No such process 视为已消失；其他失败报执行错误。辅助错误时尝试现有 async 硬取消原语作 Linux 后备；异常边界的完整故障注入仍待阶段 3 验收。
+单次计时从受控进程启动返回后开始，到进程结束为止；超时后先对进程组发送 TERM，100ms 宽限后发送 KILL，等待并回收直接判断进程。清理处于不可取消区，组长提前退出也不能取消剩余组清理；正常结束也清理遗留组成员。组已消失可立即结束清理。启动与 setsid 建组间的取消竞争有直接 PID 终止后备。kill 使用实测可处理较小负组 ID 的短信号形式（-TERM/-KILL），固定 LC_ALL=C 并仅把明确 No such process 视为已消失；其他失败报执行错误。所有组清理路径（包括组长正常退出后）在辅助程序失败时，都尝试现有 async 硬取消原语对组与直接 PID 作 Linux 后备，然后保留该执行错误；已用真实启动失败注入验证。
 
-验收必须外部检查真实父、子、孙进程的 PID 消失，并检查普通父进程 wait 子进程的证据；另验证忽略 TERM 的判断程序需要 KILL。不能用 mock、仅检查主进程退出或仅检查 kill 返回成功代替。普通子进程继承进程组；不承诺恶意脱离进程组的程序、内核不可中断状态或 SIGKILL 下的友好退出/用户态清理，也不提供沙箱。
+验收外部检查真实父、子、孙进程的 PID 消失，并检查普通父进程 wait 子进程的证据；另验证忽略 TERM 的判断程序及其子进程需要 KILL。强制终止的父进程不能再 wait；这种情况下后代由实测环境的 init/reaper 回收，测试同样要求 /proc 中 PID 消失。MoonReduce 自己等待直接判断进程，不实现 Linux subreaper。不能用 mock、仅检查主进程退出或仅检查 kill 返回成功代替。普通子进程继承进程组；不承诺恶意脱离进程组的程序、内核不可中断状态或 SIGKILL 下的友好退出/用户态清理，也不提供沙箱。
 
-每次 Interesting 改进后先保存最佳结果，再继续调用。最终输出和 JSON 报告各自采用目标同目录的临时文件写完、关闭后原子替换；两者并非跨文件事务，不承诺断电持久化。写入失败停止并保留上一个已成功保存的最佳文件；原输入不作为临时文件或替换目标。Ctrl-C 优先保护保存/清理路径，无法最终复验时明确说明；强制 SIGKILL 不承诺执行清理。
+每次 Interesting 改进后先保存最佳结果，再继续调用。输出和 JSON 报告各自采用目标同目录的独占临时文件写完、关闭后原子发布；首次发布不覆盖目标，后续最佳改进才替换本次输出。写入中途出错或 rename 失败均清理临时文件，保留上一个已成功保存的最佳文件；原输入不作为临时文件或替换目标。两份文件并非跨文件事务，不承诺 fsync 或断电持久化；报告写入失败不能撤销已保存的最佳文件。
+
+Ctrl-C 保护正在进行的保存及进程清理，尽可能发布已确认的完整候选；初始、搜索、单删和最终复验中的取消分别记录已有证据。最终复验未完成时明确 not_run/interrupted，不能因为预留了调用就继续启动。全部判断已结束后，最终报告／摘要的受保护收尾可能正常完成；不承诺捕获 SIGKILL、断电或每个指令边界的中断。清理本身因文件系统拒绝操作而失败时，保留错误，不宣称资源已清除。
 
 ## 报告与工具自身退出码
 
@@ -119,23 +132,28 @@ Native 驱动使用已验证的 `moonbitlang/async@0.22.4` 进程与文件 API�
 | 字段 | 约定 |
 | --- | --- |
 | `schema_version`、`tool_version` | 首版 schema 版本 1；工具版本 |
-| `input`、`output`、`oracle_argv` | 绝对输入/输出路径（无输出为 null）；原命令参数数组 |
+| `input`、`requested_output`、`output`、`report`、`oracle_argv` | 绝对路径；output 在无已保存结果时为 null，requested_output 始终标明请求目标；原命令参数数组 |
 | `original_bytes/segments`、`best_bytes/segments` | 精确字节和段数；无最佳为 null |
-| `stop_reason` | 见下表；不是目标行为/最小性的别名 |
+| `stop_reason`、`exit_code` | 见下表；与 CLI 实际退出码一致，不是目标行为/最小性的别名 |
 | `search_stop_reason` | not_started / completed / budget_exhausted / execution_error / interrupted；保留复验前的停止原因 |
 | `initial_check` | interesting / not_interesting / unresolved / error / interrupted / not_run |
 | `final_revalidation` | interesting / not_interesting / unresolved / error / interrupted / not_run |
 | `minimality` | verified / blocked_by_unresolved / incomplete / not_checked |
+| `minimality_reason` | empty_result / all_single_deletions_not_interesting / unresolved_single_deletions / budget_exhausted / interrupted / execution_error / no_saved_interesting_result / not_completed |
 | `minimality_checked/required` | 最终当前序列一轮单元素检查的实际完成数与应检查数；不是历史各轮累加 |
-| `tests_started`、`launch_attempts/failures` | 如预算节定义；初始、搜索、单删、最终分项，相加等于 tests_started |
+| `tests_started`、`tests_counting_unit`、`launch_attempts/failures` | 如预算节定义；tests_by_phase 的四个分项相加等于 tests_started |
 | `interesting/not_interesting/unresolved`、`timeouts` | 判定总数；timeout 是 unresolved 的子集，不重复计入总启动数 |
-| `oracle_errors`、`error` | 异常码、信号、spawn 或 I/O 错误分开记录；没有退出结果时 exit_code 为 null |
+| `oracle_errors`、`interrupted_tests`、`error` | 调用终结分类与整体执行错误分开；last_exit_code 仅为正常退出码，last_signal 为信号编号，没有结果则为 null；不能与工具 exit_code 混淆 |
 | `max_tests`、`timeout_ms`、`elapsed_ms` | 生效参数和实际用时（使用单调时钟计时） |
 | `had_unresolved`、`interrupted` | 历史标志，不能因最终通过而隐去 |
 | `cache_enabled`、`cache_hits` | 首先固定 false / 0 |
 | `diagnostics`、`output_saved` | 有界错误诊断、截断标记及实际保存状态 |
+| `result_status` | no_saved_result / revalidated_interesting / previously_interesting，最后一项仅代表曾观察为 Interesting |
+| `only_previously_observed_interesting` | 已保存且本次最终复验不是 Interesting 时为 true，包括未运行、失败、无法判断及中断 |
 
 摘要必须同时说明停止原因、最终复验状态、最小性状态、启动/超时次数和实际文件路径；初始检查结果不能代替最终复验。若不同运行对同一字节但不同路径有不同判定，以最终输出路径的实际结果为准，不宣称已解决路径敏感或随机 oracle。
+
+minimality 描述此前对当前字节序列的单删证据，不能代替最终目标行为复验。复验失败或未执行时，即使该字段仍为 verified，摘要也明确说明只是此前检查的证据。最终 NI/U 或错误会保留已保存字节与有界诊断，返回 4。关闭摘要输出管道导致写入失败时，工具改为执行错误并原子更新本次已发布的 JSON；不追加 oracle 调用。报告自身无法写入／更新时返回 4、打印 stderr，尽可能移除失效报告，不声称报告已保存。
 
 | `stop_reason` | MoonReduce 退出码 | 含义 |
 | --- | --- | --- |
@@ -147,7 +165,7 @@ Native 驱动使用已验证的 `moonbitlang/async@0.22.4` 进程与文件 API�
 | `final_not_interesting` | 4 | 输出实际复验结果 1，不能作为成功反例交付 |
 | `final_unresolved` | 4 | 输出实际复验结果 2 或超时 |
 | `execution_error` | 4 | oracle 异常退出/信号/启动错误，或必要读写、清理错误 |
-| `interrupted` | 130 | 用户中断；保存最佳但不声称完成最终复验 |
+| `interrupted` | 130 | 用户中断；保留已知最佳与已取得的证据，未完成的复验明确标注 |
 
 用法错误（含 N<2、缺少 `--`/命令、非法参数、已有输出）为工具退出码 2，不是 oracle 的 Unresolved；尽量在启动 oracle 前拒绝。帮助/版本返回 0 只表示信息命令成功。
 

@@ -331,7 +331,7 @@ def main():
         timeout_regression(work)
         interruption_and_output(work)
         assert not list(work.rglob("*.moonreduce-*")), "atomic write staging files leaked"
-    print("Stage 2 CLI workflows passed. Release readiness and the full boundary/report matrix remain unverified.")
+    print("Stage 2 CLI workflows passed. Run check_stage3.py for the reliability matrix; final release acceptance is separate.")
 
 
 if __name__ == "__main__":
