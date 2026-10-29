@@ -277,6 +277,16 @@ SDK 实际报告 moon/moonrun 0.1.20261012（748b63c）、moonc v0.10.15+943464b
 
 README 补齐实际 JSON、1-minimal、固定安装、演示与范围；SUBMISSION 一页材料分别说明值得做／做得对／做得完，保留人工缺陷、无采用及差异化有限。阶段 5 验收通过，停止于本地 v0.1 评审材料，不自动对外发布。
 
+## 提交数量与交付完善（进行记录）
+
+本任务开始于 611b9bf0f1b45bf3d5450a183e289064070d6c0e，git status --short 为空，git rev-list --count HEAD 实际为 6。已读取 README／SPEC／STATUS 和适用 AGENTS.md（无），保留全部历史，不重写、不空提交、不改核心算法。检查后 A–D 均有实质缺项，按顺序完成四个逻辑单元；数量达到 10 后停止，不再扩展 E 或替代项。
+
+### A：只读环境诊断
+
+新增 scripts/doctor.py，核对 SDK／core／async 固定组合、core bundle、注册表初始化、Native C 与系统工具，并解释 PATH／执行权限问题。算法示例实际为 C，C++ 是可选检查；不借诊断扩大支持平台，不执行安装、更新或权限修复。
+
+实际执行 python3 scripts/doctor.py：当前环境返回 0；python3 scripts/check_doctor.py 验证缺少必要 PATH／编译器返回 1、SDK 文件无执行权限返回 1、仅缺可选 C++ 仍为 0；临时 SDK 内容及模式不变，没有创建 registry。Python 语法和 git diff --check 通过。本单元提交主题 feat: add environment diagnostics，提交后历史计数为 7。
+
 ## 公开事实与相关工作
 
 ## 公开事实与相关工作

@@ -68,6 +68,8 @@ python3 scripts/check_stage4.py
 
 首次使用空注册表时必须先 moon update 初始化索引；这是阶段 5 用新 SDK 实测发现并补齐的步骤，不是升级依赖。随后 check/build 自动获取已声明的 async@0.22.4，不需要 moon upgrade。依赖下载归档 SHA-256 为 2ffdb85cb229cfe9219161a7f2b959215a79a0d75b7e642cb346713f168a1457。
 
+环境不明时可先运行 `python3 scripts/doctor.py`。它只读检查实际 moon／moonc／moonrun 与锁定版本、core bundle、async 版本／归档哈希、Native C 编译器及必需系统路径，并解释缺执行权限、PATH 或首次索引初始化问题；不会安装、联网更新或改权限。返回 0 表示必要检查通过，1 表示缺失／不匹配；WARN 不扩展支持平台，也不代替测试。Python 供示例／验证使用；当前算法目标是 C，C++ 仅作为可选诊断。诊断自身的正常／缺依赖回归为 `python3 scripts/check_doctor.py`。
+
 核心测试独立重建子序列、重新判断结果并逐个删除元素复查，枚举小规模布尔／三态谓词；Debug 和 Release 使用同一套检查。也可执行 `moon test src/core --target wasm-gc --deny-warn`；这不代表 Native CLI 已跨平台验证。当前没有云 CI，云端执行未验证；以上本地固定版本命令已实跑。
 
 阶段 0 探针脚本核对工具链与 async 版本，执行 Native 字节/进程探针、纯核心 Wasm 检查、超时树清理、外部 SIGINT 和格式检查。成功末行是 `Stage 0 acceptance probes passed...`；临时候选和日志在结束时删除。也可单独运行 `moon run src/probe --target native`，但它不包含外部 SIGINT 验收。
