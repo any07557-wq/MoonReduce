@@ -293,6 +293,12 @@ A 已提交为 aff7523（feat: add environment diagnostics），实际历史数 
 
 实际执行 python3 scripts/check_oracle_templates.py 通过：覆盖正例／负例／无效输入、未知退出、带签名的崩溃、缺命令／脚本、配置错误、超时、截断与不完整末行、stdout 假签名及带空格／shell 字符参数。真实 CLI 缩到 POP 加 LF，最终 I、单删空文件 NI、原输入不变。Python 语法与 diff 检查通过。模板只做判定，不改算法或运行时依赖；本单元提交主题 docs: add executable oracle templates and guide，提交后历史计数为 8。
 
+### C：机器可检验的报告契约
+
+B 已提交为 51b3878（docs: add executable oracle templates and guide），实际历史数 8。C 为现有 schema_version=1 补充 JSON Schema 与离线跨字段检查，不改运行时字段、核心算法或 CLI 依赖；开发校验复用当前已安装的 jsonschema 4.19.2。
+
+实际执行 python3 scripts/check_report_contract.py 通过：复用阶段 3 真实 fixture 与启动计数，校验 20 份即时报告（覆盖全部九种停止原因、空结果、预算、U、最终 NI/U、超时、各阶段中断／进程回收）及已保存算法实录；21 份矛盾副本均被拒绝，另验证 NaN 拒绝和校验器 0/1/2 退出状态。python3 scripts/validate_report.py docs/report.example.json、Python 语法及 git diff --check 通过。历史单删证据与最终复验分开解释，没有把静态自洽当作 oracle 复验。本单元提交主题 test: validate JSON report contracts，提交后历史计数为 9。
+
 ## 公开事实与相关工作
 
 以下为 2026-10-29 查阅结果，不是报名或资格判断。浏览连接器未返回结果后改用网页工具和官方公开源码；部分动态页面/包文档无法抓取，具体限制如下。

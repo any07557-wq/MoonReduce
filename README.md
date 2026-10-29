@@ -113,6 +113,8 @@ cat "$moonreduce_demo_dir/reduced.txt"
 
 ## 实际 JSON 报告与解释
 
+报告的机器可检验契约见 [JSON Schema 与跨字段检查](docs/report-contract.md)。可运行 `python3 scripts/validate_report.py docs/report.example.json`，或传入自己的报告路径；该开发工具使用 jsonschema 4.19.2，不增加 CLI 运行依赖。真实边界报告回归为 `python3 scripts/check_report_contract.py`。
+
 [完整实录](docs/report.example.json)来自阶段 5 干净源码与新 SDK 上的算法对拍运行，只做 JSON 缩进，不改写字段；其中临时绝对路径和 elapsed_ms 属于那一次运行，重新运行会不同。以下为字段节选：
 
 ```json

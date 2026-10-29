@@ -1,0 +1,601 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MoonReduce report schema_version 1",
+  "description": "Report shape and status combinations. See report-contract.md and validate_report.py for cross-field arithmetic.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "tool_version",
+    "input",
+    "requested_output",
+    "report",
+    "output",
+    "oracle_argv",
+    "original_bytes",
+    "original_segments",
+    "best_bytes",
+    "best_segments",
+    "best_positions",
+    "stop_reason",
+    "exit_code",
+    "search_stop_reason",
+    "initial_check",
+    "final_revalidation",
+    "minimality",
+    "minimality_reason",
+    "minimality_checked",
+    "minimality_required",
+    "tests_started",
+    "tests_counting_unit",
+    "launch_attempts",
+    "launch_failures",
+    "tests_by_phase",
+    "interesting",
+    "not_interesting",
+    "unresolved",
+    "timeouts",
+    "oracle_errors",
+    "interrupted_tests",
+    "error",
+    "last_exit_code",
+    "last_signal",
+    "max_tests",
+    "timeout_ms",
+    "elapsed_ms",
+    "had_unresolved",
+    "interrupted",
+    "cache_enabled",
+    "cache_hits",
+    "output_saved",
+    "result_status",
+    "only_previously_observed_interesting",
+    "diagnostics"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "tool_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "input": {
+      "type": "string",
+      "pattern": "^/"
+    },
+    "requested_output": {
+      "type": "string",
+      "pattern": "^/"
+    },
+    "report": {
+      "type": "string",
+      "pattern": "^/"
+    },
+    "output": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^/"
+    },
+    "oracle_argv": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "original_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "original_segments": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "best_bytes": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "best_segments": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "best_positions": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "uniqueItems": true
+    },
+    "stop_reason": {
+      "enum": [
+        "completed",
+        "budget_exhausted",
+        "unresolved",
+        "initial_not_interesting",
+        "initial_unresolved",
+        "final_not_interesting",
+        "final_unresolved",
+        "execution_error",
+        "interrupted"
+      ]
+    },
+    "exit_code": {
+      "enum": [
+        0,
+        1,
+        3,
+        4,
+        130
+      ]
+    },
+    "search_stop_reason": {
+      "enum": [
+        "not_started",
+        "completed",
+        "budget_exhausted",
+        "execution_error",
+        "interrupted"
+      ]
+    },
+    "initial_check": {
+      "enum": [
+        "not_run",
+        "interesting",
+        "not_interesting",
+        "unresolved",
+        "error",
+        "interrupted"
+      ]
+    },
+    "final_revalidation": {
+      "enum": [
+        "not_run",
+        "interesting",
+        "not_interesting",
+        "unresolved",
+        "error",
+        "interrupted"
+      ]
+    },
+    "minimality": {
+      "enum": [
+        "verified",
+        "blocked_by_unresolved",
+        "incomplete",
+        "not_checked"
+      ]
+    },
+    "minimality_reason": {
+      "enum": [
+        "empty_result",
+        "all_single_deletions_not_interesting",
+        "unresolved_single_deletions",
+        "budget_exhausted",
+        "interrupted",
+        "execution_error",
+        "no_saved_interesting_result",
+        "not_completed"
+      ]
+    },
+    "minimality_checked": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "minimality_required": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "tests_started": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "tests_counting_unit": {
+      "const": "controlled_launcher_start"
+    },
+    "launch_attempts": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "launch_failures": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "tests_by_phase": {
+      "type": "object",
+      "required": [
+        "initial",
+        "search",
+        "minimality",
+        "final"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "initial": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "search": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minimality": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "final": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "interesting": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "not_interesting": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "unresolved": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "timeouts": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "oracle_errors": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "interrupted_tests": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "last_exit_code": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 255
+    },
+    "last_signal": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "max_tests": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 2147483647
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "elapsed_ms": {
+      "type": "number",
+      "minimum": 0
+    },
+    "had_unresolved": {
+      "type": "boolean"
+    },
+    "interrupted": {
+      "type": "boolean"
+    },
+    "cache_enabled": {
+      "const": false
+    },
+    "cache_hits": {
+      "const": 0
+    },
+    "output_saved": {
+      "type": "boolean"
+    },
+    "result_status": {
+      "enum": [
+        "no_saved_result",
+        "revalidated_interesting",
+        "previously_interesting"
+      ]
+    },
+    "only_previously_observed_interesting": {
+      "type": "boolean"
+    },
+    "diagnostics": {
+      "type": "object",
+      "required": [
+        "stdout",
+        "stderr",
+        "stdout_truncated",
+        "stderr_truncated"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "stdout": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "stderr": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "stdout_truncated": {
+          "type": "boolean"
+        },
+        "stderr_truncated": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "stop_reason": {
+            "const": "completed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "exit_code": {
+            "const": 0
+          },
+          "final_revalidation": {
+            "const": "interesting"
+          },
+          "initial_check": {
+            "const": "interesting"
+          },
+          "minimality": {
+            "const": "verified"
+          },
+          "output_saved": {
+            "const": true
+          },
+          "search_stop_reason": {
+            "const": "completed"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stop_reason": {
+            "const": "budget_exhausted"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "exit_code": {
+            "const": 1
+          },
+          "final_revalidation": {
+            "const": "interesting"
+          },
+          "initial_check": {
+            "const": "interesting"
+          },
+          "minimality": {
+            "enum": [
+              "incomplete",
+              "not_checked"
+            ]
+          },
+          "minimality_reason": {
+            "const": "budget_exhausted"
+          },
+          "output_saved": {
+            "const": true
+          },
+          "search_stop_reason": {
+            "const": "budget_exhausted"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stop_reason": {
+            "const": "unresolved"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "exit_code": {
+            "const": 1
+          },
+          "final_revalidation": {
+            "const": "interesting"
+          },
+          "minimality": {
+            "const": "blocked_by_unresolved"
+          },
+          "output_saved": {
+            "const": true
+          },
+          "search_stop_reason": {
+            "const": "completed"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stop_reason": {
+            "const": "initial_not_interesting"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "exit_code": {
+            "const": 3
+          },
+          "initial_check": {
+            "const": "not_interesting"
+          },
+          "final_revalidation": {
+            "const": "not_run"
+          },
+          "output_saved": {
+            "const": false
+          },
+          "minimality": {
+            "const": "not_checked"
+          },
+          "search_stop_reason": {
+            "const": "not_started"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stop_reason": {
+            "const": "initial_unresolved"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "exit_code": {
+            "const": 3
+          },
+          "initial_check": {
+            "const": "unresolved"
+          },
+          "final_revalidation": {
+            "const": "not_run"
+          },
+          "output_saved": {
+            "const": false
+          },
+          "minimality": {
+            "const": "not_checked"
+          },
+          "search_stop_reason": {
+            "const": "not_started"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stop_reason": {
+            "const": "final_not_interesting"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "exit_code": {
+            "const": 4
+          },
+          "final_revalidation": {
+            "const": "not_interesting"
+          },
+          "output_saved": {
+            "const": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stop_reason": {
+            "const": "final_unresolved"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "exit_code": {
+            "const": 4
+          },
+          "final_revalidation": {
+            "const": "unresolved"
+          },
+          "output_saved": {
+            "const": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stop_reason": {
+            "const": "execution_error"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "exit_code": {
+            "const": 4
+          },
+          "error": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stop_reason": {
+            "const": "interrupted"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "exit_code": {
+            "const": 130
+          },
+          "interrupted": {
+            "const": true
+          }
+        }
+      }
+    }
+  ]
+}
