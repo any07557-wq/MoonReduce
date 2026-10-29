@@ -336,6 +336,28 @@ C 已提交为 8478f90（test: validate JSON report contracts），实际历史�
 
 本次提交主题 fix: enforce report counter and proof consistency，提交后历史数为 11，原基线保留。按既有 check_source_package.py 流程为本修复 HEAD 生成新源码包、SHA-256 和 SOURCE_COMMIT，执行解包 Release 构建、最短例及包内校验器验证；最终 hash、包路径和结果在交付回复及新 .repos/deliveries/<完整HEAD>/ 留存记录中给出，不覆盖 dcfe4bb 的材料，不为产物增加提交。实现者自审问题已修复；独立评审应针对本修复提交，外部独立评审仍待执行。没有 push、标签或发布，工程评审仍不代表赛事审核结果。
 
+## P2 修复：报告终态一致性
+
+本次基线为 44441afdb4d23687659d9a63fa83473c9f5acb08，实际 11 次提交，工作区干净，无适用 AGENTS.md。先读取 SPEC／Schema／校验器／生成器及相关测试，再保存和重现审查记录。原审查来自 /tmp/moonreduce-review-s6ubn_hw，记录、八份矛盾副本、必要脚本／真实报告和日志逐字节复制到 .repos/review-fixes/report-terminal-state-20261029/review-44441af；未复制构建缓存或大体积临时产物，未覆盖旧记录。copied-review-manifest.json 记录副本摘要，old-deliveries-manifest.json 保护既有交付物。
+
+根因是只有计数／证明下界与部分终态字段检查，缺少停止优先级、初始拒绝后的阶段限制及最后状态关联。三类原始反例和审查列出的三个相邻副本，修复前均实际 PASS/0；修复后均 FAIL/1，分别指出 oracle_errors 与 completed 冲突、final I 与信号／退出码冲突、初始 NI 却有搜索、中断标记或受控启动失败矛盾。完整命令、退出码和 stdout/stderr 在上述新留存目录的 before.json、after.json，不改写原评审。
+
+### 约束推导与矩阵
+
+已按 native/oracle.mbt 的启动与分类、driver.mbt 的早停／异常／取消、report.mbt 的状态发布及 core 快照推导[九种终态必要约束矩阵](report-contract.md#终态必要约束矩阵)，覆盖终态／退出码、初始判定、后续阶段、最终复验、错误／信号、计数与证明。普通完成、预算、U、初始拒绝、最终 NI/U 不可带未处理执行错误；oracle_errors／launch_failures 非零必须 execution_error；中断计数、标记和阶段需 interrupted/execution_error。初始非 I 或未保存不能继续后续阶段；已明确 final 判定不能存在此前失败后恢复的调用。
+
+last 字段由 invoke 进入时清空，只记录其自身等待结果，不记录 kill 辅助结果。超时返回 None，清理 TERM/KILL 不作为 last_signal；U 可对应正常 2 或带超时计数的 null。明确最终 I/NI 对应正常 0/1；错误／取消发生在状态赋值之后时保守保留信息，不一概由信号反推 oracle_errors。搜索 C 保留完整 verified/blocked 结论，B 保留未完成证明及预算理由；B 时实际次数为 max_tests−1 加 final 的实际启动数，final 准备／启动失败可只有 max_tests−1。历史 U 可恢复正常完成，空证明可零调用，已保存或已有证明均不替代最终复验。
+
+### 实际验证
+
+- python3 scripts/check_report_contract.py：44 份即时真实报告覆盖全部九种终态，兼容初始 NI/U 后摘要失败、已最终 I 后 IO 错误、已保存后 final 启动失败（含预算仅 2）、已观察 I 后保存中断（interrupted_tests=0）、四阶段信号、正常退出 137、空结果最终 U／超时及历史 U 后完成。超时报告的 last 两字段均 null；原算法实录通过。
+- 原 21 份负例、上一轮 19 个计数／证明变异继续通过；新增 29 个终态变异保持 Schema、阶段／分类／尝试总和及旧证明约束合法，逐项断言失败只来自新终态检查、含对应字段诊断且命令返回 1，未借无关类型／Schema 错误拒绝。校验器 0/1/2 和 NaN 回归通过。完整输出存于 contract-regression-final.stdout/stderr。
+- 对留存的本轮原始命令重新执行，六份反例从 0 变为 1；Python 语法、git diff --check 与新增本地文档链接检查通过。
+
+未发现 CLI 自行生成本轮矛盾报告，核心、Native 生成器、Schema 和依赖未修改；仅收紧 Python 检查及配套测试／文档。没有重新安装 SDK或重跑全部核心／进程故障矩阵；未穷举状态读取到取消的全部指令窗口。校验器仍只检查结构及可推导必要关系，不能证明报告真实性、oracle 实际执行或完整执行轨迹。
+
+本次提交主题 fix: validate report terminal-state consistency，提交后历史为 12 次；以新 HEAD 按既有流程打包、核对 SHA-256／SOURCE_COMMIT、解包构建及包内校验器，结果和完整 HEAD 另存新 .repos/deliveries/<HEAD>/ 及交付回复，不为留存产物增加提交。原 dcfe4bb／44441af 源码包与评审记录保留。此次仍是实现者修复与验证，未参与实现者的独立评审仍待执行；不 push、打标签或发布，工程结论不代表赛事审核结果。
+
 ## 公开事实与相关工作
 
 以下为 2026-10-29 查阅结果，不是报名或资格判断。浏览连接器未返回结果后改用网页工具和官方公开源码；部分动态页面/包文档无法抓取，具体限制如下。

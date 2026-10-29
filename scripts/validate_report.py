@@ -17,6 +17,110 @@ def make_validator():
     return Draft202012Validator(schema)
 
 
+def terminal_violations(data):
+    """Necessary control-flow relations, after schema validation; not a trace verifier."""
+    errors = []
+
+    def require(condition, message):
+        if not condition:
+            errors.append(message)
+
+    reason = data["stop_reason"]
+    initial, final = data["initial_check"], data["final_revalidation"]
+    phases = data["tests_by_phase"]
+    exceptional = ("execution_error", "interrupted")
+    for counter in ("oracle_errors", "launch_failures"):
+        if data[counter]:
+            require(reason == "execution_error",
+                    f"{counter}={data[counter]} requires stop_reason=execution_error, got {reason}")
+    if data["interrupted_tests"]:
+        require(data["interrupted"], "interrupted_tests>0 requires interrupted=true")
+        require(reason in exceptional,
+                f"interrupted_tests>0 requires stop_reason=interrupted/execution_error, got {reason}")
+    if data["interrupted"]:
+        require(reason in exceptional,
+                f"interrupted=true requires stop_reason=interrupted/execution_error, got {reason}")
+    for field, value in [("initial_check", initial), ("final_revalidation", final),
+                         ("search_stop_reason", data["search_stop_reason"])]:
+        if value in ("error", "execution_error"):
+            require(reason == "execution_error",
+                    f"{field}={value} requires stop_reason=execution_error, got {reason}")
+        elif value == "interrupted":
+            require(data["interrupted"] and reason in exceptional,
+                    f"{field}=interrupted requires interrupted=true and "
+                    "stop_reason=interrupted/execution_error")
+    if initial != "interesting":
+        for phase in ("search", "minimality", "final"):
+            require(phases[phase] == 0,
+                    f"initial_check={initial} forbids tests_by_phase.{phase}={phases[phase]}")
+        require(not data["output_saved"],
+                f"initial_check={initial} requires output_saved=false")
+        require(data["minimality"] == "not_checked" and data["minimality_checked"] == 0,
+                f"initial_check={initial} requires minimality=not_checked and minimality_checked=0")
+        if initial in ("not_interesting", "unresolved"):
+            rejected = "initial_not_interesting" if initial == "not_interesting" else "initial_unresolved"
+            require(reason in (*exceptional, rejected),
+                    f"initial_check={initial} permits only stop_reason={rejected}/interrupted/execution_error")
+            require(data["launch_failures"] == 0,
+                    f"initial_check={initial} forbids launch_failures after its successful initial start")
+    if not data["output_saved"]:
+        require(all(phases[phase] == 0 for phase in ("search", "minimality", "final")),
+                "output_saved=false forbids search/minimality/final starts")
+        require(final == "not_run", "output_saved=false requires final_revalidation=not_run")
+        require(data["minimality"] == "not_checked",
+                "output_saved=false requires minimality=not_checked")
+    search = data["search_stop_reason"]
+    if search == "completed":
+        require(data["minimality"] in ("verified", "blocked_by_unresolved"),
+                "search_stop_reason=completed requires minimality=verified/blocked_by_unresolved")
+    elif search == "budget_exhausted":
+        require(data["minimality"] in ("not_checked", "incomplete") and
+                data["minimality_reason"] == "budget_exhausted",
+                "search_stop_reason=budget_exhausted requires unfinished minimality "
+                "and minimality_reason=budget_exhausted")
+        require(data["tests_started"] == data["max_tests"] - 1 + phases["final"],
+                "search_stop_reason=budget_exhausted requires "
+                "tests_started=max_tests-1+tests_by_phase.final (reserved final start)")
+
+    # invoke clears the previous status before even preparing a new call. It
+    # publishes None for a timed-out wait, not the subsequent cleanup signal.
+    # A known final verdict, or initial NI/U (no later invoke), determines the
+    # last status. Initial I alone cannot: a later failed preparation clears it.
+    codes = {"interesting": 0, "not_interesting": 1, "unresolved": 2}
+    endpoint = ("final_revalidation", final) if final in codes else (
+        ("initial_check", initial) if initial in ("not_interesting", "unresolved") else None
+    )
+    status, signal = data["last_exit_code"], data["last_signal"]
+    if endpoint:
+        field, verdict = endpoint
+        if field == "final_revalidation":
+            require(search in ("completed", "budget_exhausted"),
+                    f"final_revalidation={verdict} requires "
+                    "search_stop_reason=completed/budget_exhausted")
+            for counter in ("oracle_errors", "launch_failures", "interrupted_tests"):
+                require(data[counter] == 0,
+                        f"final_revalidation={verdict} requires {counter}=0; "
+                        "no recovery after a failed/cancelled judgment start")
+        require(signal is None, f"{field}={verdict} requires last_signal=null, got {signal}")
+        if verdict == "unresolved":
+            require(status in (None, 2),
+                    f"{field}=unresolved requires last_exit_code=2/null, got {status}")
+            if status is None:
+                require(data["timeouts"] > 0,
+                        f"{field}=unresolved with last_exit_code=null requires timeouts>0")
+        else:
+            require(status == codes[verdict],
+                    f"{field}={verdict} requires last_exit_code={codes[verdict]}, got {status}")
+    if signal is not None or status not in (None, 0, 1, 2):
+        require(reason in exceptional,
+                f"last_signal={signal}, last_exit_code={status} require "
+                f"stop_reason=execution_error/interrupted, got {reason}")
+    # Do not require oracle_errors>0 for every execution_error, or infer a
+    # terminal class from a status in an interrupted call: IO/cancellation can
+    # happen after wait returns but before the status is classified.
+    return errors
+
+
 def violations(data, validator):
     errors = [f"schema {list(error.absolute_path)}: {error.message}"
               for error in validator.iter_errors(data)]
@@ -144,6 +248,7 @@ def violations(data, validator):
         require(data["error"] is None, "non-error stop contains execution error")
     if data["stop_reason"] in ("completed", "budget_exhausted", "unresolved"):
         require(not data["interrupted"], "successful/partial completion cannot claim interruption")
+    errors.extend(terminal_violations(data))
     return errors
 
 

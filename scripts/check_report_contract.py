@@ -10,7 +10,7 @@ import sys
 import tempfile
 
 import check_stage3 as reliability
-from validate_report import load_report, make_validator, violations
+from validate_report import load_report, make_validator, terminal_violations, violations
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -126,6 +126,166 @@ def counter_and_proof_mutations(reports, validator, work, command):
     return len(checked)
 
 
+def terminal_mutations(reports, validator, work, command):
+    count = 0
+
+    def reject(name, data, message):
+        nonlocal count
+        assert not list(validator.iter_errors(data)), name
+        assert data["tests_started"] == sum(data["tests_by_phase"].values()), name
+        assert data["tests_started"] == sum(data[key] for key in (
+            "interesting", "not_interesting", "unresolved", "oracle_errors", "interrupted_tests"
+        )), name
+        assert data["launch_attempts"] == data["tests_started"] + data["launch_failures"], name
+        terminal = terminal_violations(data)
+        errors = violations(data, validator)
+        # No earlier schema/count/proof rule may be the reason for rejection.
+        assert errors == terminal and any(message in error for error in errors), (name, errors)
+        path = work / ("terminal-" + name + ".json")
+        path.write_text(json.dumps(data))
+        result = subprocess.run([*command, path], capture_output=True, text=True, timeout=10)
+        assert result.returncode == 1 and message in result.stderr, (name, result.stdout, result.stderr)
+        count += 1
+
+    for counter in ("oracle_errors", "interrupted_tests"):
+        data = deepcopy(reports["normal"])
+        data[counter] += 1
+        data["not_interesting"] -= 1
+        reject("completed-" + counter, data, counter + ("=1 requires" if counter == "oracle_errors"
+                                                        else ">0 requires interrupted=true"))
+    data = deepcopy(reports["normal"])
+    data["launch_failures"] = 1
+    data["launch_attempts"] += 1
+    reject("completed-launch-failure", data, "launch_failures=1 requires stop_reason=execution_error")
+    for name in ("initial-NI", "initial-U"):
+        data = deepcopy(reports[name])
+        data["tests_by_phase"]["search"] = 1
+        for field in ("tests_started", "launch_attempts", "not_interesting"):
+            data[field] += 1
+        reject(name + "-searched", data, f"initial_check={data['initial_check']} forbids tests_by_phase.search=1")
+    data = deepcopy(reports["initial-save-error"])
+    data["tests_by_phase"]["search"] = 1
+    for field in ("tests_started", "launch_attempts", "not_interesting"):
+        data[field] += 1
+    reject("unsaved-searched", data, "output_saved=false forbids search/minimality/final starts")
+    data = deepcopy(reports["initial-save-error"])
+    data["minimality"] = "incomplete"
+    reject("unsaved-proof-started", data, "output_saved=false requires minimality=not_checked")
+    data = deepcopy(reports["initial-NI-summary-error"])
+    data["launch_failures"] = 1
+    data["launch_attempts"] += 1
+    reject("initial-NI-later-launch-failure", data, "initial_check=not_interesting forbids launch_failures")
+    for counter in ("oracle_errors", "interrupted_tests"):
+        data = deepcopy(reports["closed-stdout"])
+        data[counter] += 1
+        data["not_interesting"] -= 1
+        if counter == "interrupted_tests":
+            data["interrupted"] = True
+        reject("final-known-after-" + counter, data, "final_revalidation=interesting requires " + counter + "=0")
+    data = deepcopy(reports["closed-stdout"])
+    data["launch_failures"] = 1
+    data["launch_attempts"] += 1
+    reject("final-known-after-launch-failure", data, "final_revalidation=interesting requires launch_failures=0")
+    for value in (1, 2, 137):
+        data = deepcopy(reports["normal"])
+        data["last_exit_code"] = value
+        reject(f"final-I-exit-{value}", data, f"final_revalidation=interesting requires last_exit_code=0, got {value}")
+    data = deepcopy(reports["normal"])
+    data.update(last_exit_code=None, last_signal=9)
+    reject("final-I-signal", data, "final_revalidation=interesting requires last_signal=null, got 9")
+    for name, value in (("final-NI", 0), ("initial-NI", 0), ("initial-U", 1), ("final-U", 1)):
+        data = deepcopy(reports[name])
+        data["last_exit_code"] = value
+        reject(name + "-wrong-exit", data, f"{('initial_check' if name.startswith('initial') else 'final_revalidation')}="
+               f"{data['initial_check'] if name.startswith('initial') else data['final_revalidation']} requires last_exit_code=")
+    data = deepcopy(reports["final-U"])
+    data["last_exit_code"] = None
+    assert data["timeouts"] == 0
+    reject("final-U-null-without-timeout", data, "last_exit_code=null requires timeouts>0")
+    data = deepcopy(reports["budget"])
+    data["max_tests"] += 1
+    reject("budget-before-limit", data, "tests_started=max_tests-1+tests_by_phase.final")
+    data = deepcopy(reports["final-NI"])
+    data["search_stop_reason"] = "not_started"
+    reject("final-without-search-stop", data,
+           "final_revalidation=not_interesting requires search_stop_reason=completed/budget_exhausted")
+    data = deepcopy(reports["closed-stdout"])
+    data["minimality"] = "incomplete"
+    reject("completed-search-incomplete-proof", data,
+           "search_stop_reason=completed requires minimality=verified/blocked_by_unresolved")
+    data = deepcopy(reports["budget-final-U"])
+    data["minimality_reason"] = "not_completed"
+    reject("budget-proof-reason", data,
+           "search_stop_reason=budget_exhausted requires unfinished minimality")
+    for name, field, value in [("interrupt-initial", "initial_check", "error"),
+                                ("interrupt-final", "final_revalidation", "error"),
+                                ("interrupt-search", "search_stop_reason", "execution_error")]:
+        data = deepcopy(reports[name])
+        data[field] = value
+        reject(name + "-error-marker", data, f"{field}={value} requires stop_reason=execution_error")
+    data = deepcopy(reports["execution-error"])
+    data["search_stop_reason"] = "interrupted"
+    reject("interrupted-marker-without-flag", data, "search_stop_reason=interrupted requires interrupted=true")
+    data = deepcopy(reports["final-U"])
+    data["interrupted"] = True
+    reject("final-U-interrupted-flag", data,
+           "interrupted=true requires stop_reason=interrupted/execution_error")
+    return count
+
+
+def interrupt_during_save(work):
+    # Gate the existing test-only write interposer, not a millisecond race.
+    case = reliability.Case(work, "interrupt-save-observed-I", b"BUG")
+    gate = case.path / "save-gate"
+    case.env.update({"MOONREDUCE_TEST_WRITE_PREFIX": str(case.output) + ".moonreduce-",
+                     "MOONREDUCE_TEST_WRITE_GATE": str(gate)})
+    with case.log.open("wb") as stream:
+        process = subprocess.Popen(case.argv, cwd=ROOT, env=case.env, stdout=stream,
+                                   stderr=stream, start_new_session=True)
+        try:
+            reliability.wait_for(lambda: Path(str(gate) + ".ready").exists(), process, case.log)
+            process.send_signal(signal.SIGINT)
+            Path(str(gate) + ".release").touch()
+            code = process.wait(timeout=6)
+            log = case.log.read_text()
+            data = case.check(subprocess.CompletedProcess(case.argv, code, log, log))
+            assert code == 130 and data["initial_check"] == "interesting"
+            assert data["interrupted_tests"] == 0 and data["final_revalidation"] == "not_run"
+        finally:
+            Path(str(gate) + ".release").touch()
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+
+
+def summary_failures(work):
+    # Confirmed rejection/verdict can survive a later summary IO error. These
+    # are real reports, not hand-edited execution_error compatibility fixtures.
+    for name, calls in [("closed-stdout", None), ("initial-NI-summary-error", {"1": {"verdict": 1}}),
+                        ("initial-U-summary-error", {"1": {"verdict": 2}})]:
+        case = reliability.Case(work, name, calls=calls)
+        process = subprocess.Popen(case.argv, cwd=ROOT, env=case.env,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        process.stdout.close()
+        try:
+            code = process.wait(timeout=8)
+            message = process.stderr.read(8192).decode()
+            data = load_report(case.report)
+            assert code == data["exit_code"] == 4 and data["stop_reason"] == "execution_error"
+            assert "Broken pipe" in data["error"] and "exit code: 4" in message
+            assert case.input.read_bytes() == case.original and data["oracle_errors"] == 0
+            assert len(reliability.rows(case.trace)) == data["tests_started"]
+            if calls is None:
+                assert data["final_revalidation"] == "interesting" and data["minimality"] == "verified"
+            else:
+                assert not data["output_saved"] and data["tests_started"] == 1
+        finally:
+            process.stderr.close()
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+
+
 def main():
     validator = make_validator()
     if len(sys.argv) == 2:
@@ -158,8 +318,29 @@ def main():
                 ("diagnostic-error", {"calls": {"1": {"break_log": True}}}, 4),
                 ("budget-final-NI", {"budget": 2, "calls": {"2": {"verdict": 1}}}, 4),
                 ("budget-final-U", {"budget": 2, "calls": {"2": {"verdict": 2}}}, 4),
+                ("initial-signal", {"calls": {"1": {"signal": 15}}}, 4),
+                ("search-signal", {"calls": {"2": {"signal": 15}}}, 4),
+                ("minimality-signal", {"original": b"BUG", "calls": {"2": {"signal": 15}}}, 4),
+                ("final-signal", {"original": b"BUG", "calls": {"3": {"signal": 15}}}, 4),
+                ("initial-exit-137", {"calls": {"1": {"verdict": 137}}}, 4),
+                ("empty-final-U", {"original": b"", "predicate": "always", "budget": 2,
+                                   "calls": {"2": {"verdict": 2}}}, 4),
+                ("empty-final-timeout", {"original": b"", "predicate": "always", "budget": 2,
+                                         "timeout": 750, "calls": {"2": {"tree": "stubborn-tree"}}}, 4),
             ]:
                 reliability.Case(work, name, **kwargs).run(code)
+            for name, call, budget in [("final-launcher-error", 2, 1000),
+                                       ("budget-final-launcher-error", 1, 2)]:
+                arm = work / name / "arm-launch-failure"
+                case = reliability.Case(work, name, b"BUG", budget=budget,
+                                        calls={str(call): {"touch": str(arm)}}, fault="/usr/bin/setsid")
+                case.env["MOONREDUCE_TEST_FAIL_SPAWN_ARM"] = str(arm)
+                case.run(4)
+            directory = work / "initial-save-error/results"
+            reliability.Case(work, "initial-save-error", b"BUG",
+                             calls={"1": {"chmod": str(directory)}}).run(4)
+            summary_failures(work)
+            interrupt_during_save(work)
             full = load_report(work / "unresolved/reports/report.json")
             partial = reliability.Case(work, "partial-proof-budget", predicate="only-original",
                                        budget=full["tests_started"] - 1).run(1)
@@ -189,11 +370,30 @@ def main():
             assert reports["diagnostic-error"]["initial_check"] == "error"
             assert reports["diagnostic-error"]["interesting"] == 1
             assert reports["diagnostic-error"]["oracle_errors"] == 0
+            assert reports["historical-U"]["had_unresolved"] and reports["historical-U"]["exit_code"] == 0
+            assert reports["initial-exit-137"]["last_exit_code"] == 137
+            assert reports["initial-exit-137"]["last_signal"] is None
+            for name in ("initial-signal", "search-signal", "minimality-signal", "final-signal"):
+                assert reports[name]["last_signal"] == 15 and reports[name]["last_exit_code"] is None
+            for name in ("empty-final-timeout", "final-timeout", "ordinary-initial", "stubborn-child-initial"):
+                assert reports[name]["last_exit_code"] is None and reports[name]["last_signal"] is None
+                assert reports[name]["timeouts"] == 1
+            reliability.gone(json.loads((work / "empty-final-timeout/evidence/pids.json").read_text()))
+            for name in ("final-launcher-error", "budget-final-launcher-error"):
+                assert reports[name]["output_saved"] and reports[name]["final_revalidation"] == "error"
+                assert reports[name]["tests_by_phase"]["final"] == 0 and reports[name]["last_exit_code"] is None
+            assert reports["final-launcher-error"]["minimality"] == "verified"
+            assert reports["budget-final-launcher-error"]["tests_started"] == 1
+            assert reports["closed-stdout"]["final_revalidation"] == "interesting"
+            assert reports["closed-stdout"]["oracle_errors"] == 0
+            for name in ("empty-final-U", "empty-final-timeout"):
+                assert reports[name]["minimality"] == "verified" and reports[name]["minimality_checked"] == 0
             command = [sys.executable, ROOT / "scripts/validate_report.py"]
             result = subprocess.run([*command, ROOT / "docs/report.example.json", *paths],
                                     capture_output=True, text=True, timeout=10)
             assert result.returncode == 0, result.stderr
             relations = counter_and_proof_mutations(reports, validator, work, command)
+            terminals = terminal_mutations(reports, validator, work, command)
             passed = True
         finally:
             if not passed:
@@ -245,7 +445,7 @@ def main():
         assert result.returncode == 2 and "jsonschema==4.19.2" in result.stderr
     print(f"PASS {len(paths)} real reports (all stop reasons), recorded algorithm report, "
           f"{len(invalid)} legacy copies, {relations} targeted counter/proof mutations "
-          "with specific diagnostics and validator exits 0/1/2")
+          f"and {terminals} terminal mutations with specific diagnostics and validator exits 0/1/2")
 
 
 if __name__ == "__main__":

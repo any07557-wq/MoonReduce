@@ -104,6 +104,8 @@ oracle_errors 统计已启动、但因异常退出、信号、候选内容错误
 
 初始／最终明确三态各需要其阶段的一次实际启动，判定类别总数至少覆盖这些不同调用。当前一轮 minimality_checked 仅由单删请求的 NI/U 反馈递增；I 改进重启并清零，不复用搜索、缓存或旧轮证据。因此当前进度不超过累计单删启动数，但二者无需相等；verified 的当前进度还需同样数量的 NI，blocked_by_unresolved 至少需一个本轮 U。这些证据与初始／最终判定分别计数。空结果允许零次删除证明；error／interrupted 不据名称推断是否已启动或已取得判定。离线检查的必要下界与边界见 [报告契约](report-contract.md)，不能据此证明 oracle 真正执行或报告未被伪造。
 
+oracle_errors／launch_failures 非零意味着必须 execution_error，不可恢复为普通完成；interrupted_tests 非零需中断标记及 interrupted/execution_error 终态。初始非 I 或首次保存失败均不能启动后续判断。last_exit_code／last_signal 在每个 invoke 准备前清空，只记录该次等待结果，不记录工具／kill 辅助状态；超时返回 null 而非清理信号。明确最终 I/NI 对应正常 0/1，U 对应正常 2 或超时 null。错误与中断可发生在已读取进程状态之后，不能一概由最后信号推断终结分类。完整九种终态、预算预留和历史证明的必要关系见[终态矩阵](report-contract.md#终态必要约束矩阵)。
+
 初始检查可占用第 1 次；其后只有 `tests_started < N - 1` 时才启动搜索或单元素检查。最后 1 次始终预留给**输出文件的最终实际复验**，不能被隐藏复验占用或超预算。
 
 - N=2，非空初始输入 Interesting：直接交付初始最佳文件并实际复验，`budget_exhausted`，不能称已验证最小性。
