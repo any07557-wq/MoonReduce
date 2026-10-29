@@ -1,6 +1,6 @@
 # 实际状态与事实记录
 
-记录日期：2026-10-29（Asia/Shanghai）。阶段 0–4 已验收，现有可靠性矩阵、人工缺陷算法对拍流程及独立 MoonBit 消费工程都有运行证据；不代表最终可发布或比赛审核通过。干净环境独立验收尚未完成，没有真实外部采用或新发现的生产缺陷证据。
+记录日期：2026-10-29（Asia/Shanghai）。阶段 0–5 已验收，结论为 **Ready for local v0.1 review**。已用干净 Git 源码、重新下载的固定 SDK 和空注册表完成全链路复现；由实现者在同一台 WSL2 主机执行，没有外部用户、另一台机器或新发现的生产缺陷证据。工程交付验收结论不代表月赛审核结果。
 
 ## 阶段 0 已完成（历史记录）
 
@@ -214,7 +214,70 @@ audit.py 不导入 oracle 或核心算法；独立枚举所有连续区间核对
 
 实际核对了 Picire README（行／字符、库／CLI、并行配置）、Lithium README／interestingness 接口文档，以及 MoonBit QuickCheck 包文档和本机固定 core 的 Shrink／属性驱动说明。QuickCheck 本身已有给定起点和自定义 shrinker 的手动接口，不能以“不必随机生成”或“不必给元素实现 Shrink”宣称独有。没有安装这些项目运行本案例或做性能赛跑；部分原始 GitHub 文件抓取失败时改读可用的一手文档及固定本机源码，具体来源在 examples。现有算法与任务不新，参赛差异化仍有限，真实采用和外部可用性还需证据，不能保证审核。
 
-阶段 4 通过；阶段 3 完整故障矩阵本阶段没有重跑，其验收记录保留且运行层未改变。干净机器／新工具链构建、独立外部复现、普通非 WSL Linux 及真实生产缺陷案例仍未验证。
+阶段 4 通过；截至当时，阶段 3 完整故障矩阵本阶段没有重跑，其验收记录保留且运行层未改变。干净源码／新工具链构建、独立外部复现、普通非 WSL Linux 及真实生产缺陷案例在阶段 4 结束时尚未验证；后续结果见下一节。
+
+## 阶段 5 干净复现与交付验收
+
+开始时读取规格、状态、计划、README、Git 状态及适用 AGENTS.md。main 干净，前置提交为 6752b95（test: add reproducible reduction and consumer examples），没有新 AGENTS.md 或无关修改。预算按用户本阶段 3h 更新；没有改动缩减算法或 Native 执行代码，也没有需要独立 fix commit 的运行时缺陷。
+
+### 隔离方法与实际安装
+
+1. 将 Git 提交导出到 /tmp/moonreduce-stage5-vfwu0d5x/source，开始时没有 .git、_build、.mooncakes 或任何未跟踪文件。所有脚本按该导出目录定位包根，没有依赖原工程产物。
+2. 从官方地址重新下载固定 SDK 和 core 至本次临时目录，解包到独立 toolchain，设置子进程 MOON_HOME 和只含该 SDK、/usr/bin、/bin 的 PATH；未改 HOME、现有 SDK、全局配置或工具链版本。实际重新 bundle Native 与 wasm-gc 的标准库。
+3. 原样执行最终 README 的独立安装块，又在 /tmp/tmp.uR2JeMOvdY 完成固定下载、哈希验证、解包、执行权限及 bundle。私有注册表从空目录初始化，再重新获取 async@0.22.4；没有复用原注册表或作者 _build。
+4. 最终暂存内容导出为另一个干净源码目录验证；提交的 tree 与验收快照一致。最终验证包含 README 构建／基础示例、算法案例、演示命令、消费工程及 Debug／Release 可靠性矩阵。
+
+本阶段发现并修复的是安装／复现说明遗漏：空注册表的初次 moon check 报 module not found，必须先 moon update；官方归档内 bin/moon、moonc、moonrun、internal/tcc 的模式为 0664，手动解包必须补执行权限。修订后的 README 安装块已原样运行成功，没有通过复用旧缓存、升级到 latest 或放宽验收绕过。
+
+| 固定归档 | 实际 SHA-256 |
+| --- | --- |
+| SDK 0.10.15+943464bfa，Linux x86_64 | 24b93a5409d2a4fb8e3d1b84b473f27b63476cef4418094764df96cb26b03c09 |
+| core 0.10.15+943464bfa | 96d30f4dbcc6a9e1736ef26fbdd0e8fb0e97cb01d50e55d2a0072208b8061ae5 |
+| async 0.22.4 zip | 2ffdb85cb229cfe9219161a7f2b959215a79a0d75b7e642cb346713f168a1457 |
+
+SDK 实际报告 moon/moonrun 0.1.20261012（748b63c）、moonc v0.10.15+943464bfa，rr_moon_mod/rr_moon_pkg；系统为 WSL2 Ubuntu 26.04、x86_64、内核 6.18.33.2-microsoft-standard-WSL2，GCC 15.2.0、glibc 2.43、setsid 2.41.3、kill 4.0.4、uutils coreutils 0.8.0、Python 3.14.4。C 编译器、glibc 和 init/reaper 属于同一台宿主，未宣称重装系统或外部人员验证。
+
+### 实际命令与结果
+
+以下均在导出的干净源码及新 SDK 环境执行；完整版本及各阶段语义见前文。
+
+| 命令／流程 | 结果 |
+| --- | --- |
+| README 固定安装块；moon version --all；moon update | 下载／哈希／执行权限／Native 与 wasm-gc bundle／索引初始化通过 |
+| moon check --target native --deny-warn | 通过；独立下载固定依赖 |
+| moon test --target native --deny-warn；添加 --release 的同命令 | Debug／Release 各 21 项通过 |
+| moon test src/core --target wasm-gc --deny-warn | 纯核心 20 项通过，不据此扩展 CLI 支持平台 |
+| moon build --target native --release --deny-warn | 通过；阶段 0/2/3/4 脚本另实际构建 Debug |
+| python3 scripts/check_stage0.py | 字节／argv／退出码／嵌套超时／树清理／两种 SIGINT、版本和格式通过 |
+| python3 scripts/check_stage2.py；以 Release 二进制为参数的同脚本 | 两种模式通过，含基本 BUG 标记和 500ms 嵌套超时回归 |
+| python3 scripts/check_stage3.py；以 Release 二进制为参数的同脚本 | 两种模式完整故障矩阵通过，包括独立启动计数、预算边界、保存／报告失败、32 MiB 双流、四阶段 SIGINT |
+| python3 scripts/check_stage4.py；以 Release 二进制为参数的同脚本 | 两种模式案例和消费工程通过，含迁出目录与全新编译产物检查 |
+| README 基础示例、算法 README 的完整 sh 块、README 演示块 | 原样执行通过，实际独立复验与逐删审计通过 |
+| moon -C examples/moonbit-consumer check/build/test/run src --target native --deny-warn（四条分别执行） | 全部通过，test/run 的 Release 也通过 |
+| 格式／Python 语法／JSON 与本地 Markdown 链接检查、git diff --check | 通过 |
+
+新 SDK 上完整算法流程仍为 310 字节／96 段 → 9 字节／3 段、98 次实际调用（1/93/3/1），输出 17、-3、19 各保留 LF，正确 33、错误 19；单删三次分别为 19/19、36/36、17/17。报告实录只做缩进存为 docs/report.example.json，elapsed_ms=9246 是该次运行实测值，不是性能承诺。账本仍为 8→2、23 次核心回调，独立重放 0/12。目标均提前编译，原输入及二进制未改变。
+
+编译仍可见已记录的上游 async/thread_pool.c 忽略 write 返回值的 C 警告；没有修改依赖或屏蔽项目警告。MoonBit check/test 仍使用 --deny-warn。没有配置云 CI，云端执行未验证；没有使用 latest。
+
+### 最终验收逐项回答
+
+| 问题 | 结论与证据 |
+| --- | --- |
+| 现有复现命令能否缩减失败文件？ | 能，须符合最后追加候选路径及 0/1/2 协议；基本 CLI 与算法对拍已真实执行，工具不替用户定义同一问题 |
+| 字节语义与原文件是否安全？ | LF 分段保留原字节，CRLF／空行／非法 UTF-8／末段无 LF 等回归通过；原始字节与哈希不变，链接别名和已有目标拒绝覆盖 |
+| 超时和常规进程树是否清理？ | 父／子／孙的真实 PID 消失，普通父子有 wait 标记；忽略 TERM、组长提前退出和辅助失败后备通过。孤儿最终回收依赖本环境 init/reaper |
+| 复验与最小性是否分开？ | final_revalidation、minimality、停止原因和 only_previously_observed_interesting 分开记录；有界诊断保留，完整真实 JSON 已提供 |
+| 预算／U／最终失败会不会显示成功？ | 已测边界均不会：缺证明但最终 I 为 1；初始 NI/U 为 3；最终 NI/U／异常为 4；中断为 130，清理错误优先为 4。预算恰好完成全证据才可为 0 |
+| 能否从干净源码复现？ | 已由实现者用 Git 源码、新 SDK、空注册表、全新编译产物完成；可供同支持环境的第三方按仓库复现，但没有外部人／独立机器实跑证据 |
+| 主要能力是否由 MoonBit 实现？ | ddmin、候选协议、字节驱动、预算／保存／复验／报告在 core/native MoonBit 源码；只复用 async 和系统组工具，没有调用别的缩减器 |
+| 选定流程是否闭合？ | 两个正常完成目标的整数对拍、错误判定、缩减、保存、独立复验／单删、报告与库消费闭合。重建 n 是公开 oracle 的正常适配，不是绕过核心缺口 |
+| 采用理由哪些成立？ | 自动闭环和直接复用 MoonBit 类型有运行证据；需求强度、生产场景、学习成本、迁移意愿与性能优势尚无证据，外部采用为无 |
+| 是否有必须降低承诺才能交付的缺口？ | 无。安装说明遗漏已修复并实跑；没有删除必须能力或把错误／U 改当成功。支持范围只写实际已测环境，明确保留原有范围与限制 |
+
+README 补齐实际 JSON、1-minimal、固定安装、演示与范围；SUBMISSION 一页材料分别说明值得做／做得对／做得完，保留人工缺陷、无采用及差异化有限。阶段 5 验收通过，停止于本地 v0.1 评审材料，不自动对外发布。
+
+## 公开事实与相关工作
 
 ## 公开事实与相关工作
 
@@ -233,10 +296,10 @@ audit.py 不导入 oracle 或核心算法；独立枚举所有连续区间核对
 
 ## 验收结论、限制和下一步
 
-阶段 0–4 已通过，包括文件／进程能力、纯核心、CLI 主流程、可靠性／报告矩阵、人工对拍和独立库消费。完整 v0.1 尚未通过最终发布验收。按用户阶段 4 的 3h prompt 更新计划后，阶段工作估算 19 小时，另留约 2 小时缓冲，合计约 21 小时；本阶段在预算内完成，三天预算仍可信。
+阶段 0–5 已通过，结论为 Ready for local v0.1 review。按用户阶段 4、5 各 3h 更新计划，阶段工作估算 20 小时，另留约 2 小时缓冲，合计约 22 小时；本阶段在预算内完成。工程就绪不等于需求／参赛论证充分，工程交付验收结论不代表月赛审核结果。
 
 原历史探针对 kill 0/1 的宽松判断不作为正式 runner 的语义。Native runner 已严格区分 ESRCH 和其他失败，并通过正常、超时、中断三种清理上下文的辅助启动失败注入。强制终止孤儿后代的最终回收依赖实际环境 init/reaper；普通非 WSL Linux 及其他容器 init 行为未验证。不承诺恶意 setsid 脱离、不可中断内核等待、SIGKILL 或断电后的用户态清理。
 
-保存和 JSON 分别原子发布，不是跨文件事务、不承诺断电持久化；日志不设磁盘配额。必要文件无法操作时可能无法写出报告，明确以 stderr 和退出码 4 报错。人工算法调试流程和独立库集成已验证；新装工具链／干净环境、独立外部复现、真实生产缺陷和用户采用仍未验证。BUG 标记、算法缺陷、账本错误与故障 fixture 都是人工案例；不承诺全局最短或随机 oracle 稳定性。
+保存和 JSON 分别原子发布，不是跨文件事务、不承诺断电持久化；输入驻留内存，日志不设磁盘配额。必要文件无法操作时可能无法写出报告，明确以 stderr 和退出码 4 报错。干净源码／新 SDK 复现已完成；独立外部人员／机器、真实生产缺陷、其他平台和用户采用仍未验证，云 CI 未配置／未验证。BUG 标记、算法缺陷、账本错误与故障 fixture 均为人工案例；不承诺全局最短或随机 oracle 稳定性。
 
-下一阶段入口：等待用户阶段 5 prompt，进行干净环境独立复现与收尾；本阶段结束后停止，不提前进入下一阶段。
+后续入口：本地交付完成后停止。发布包、标签、Release、push、外部试用或赛事申报均未执行，由用户后续决定。

@@ -512,7 +512,7 @@ def main():
                             pass
                 for directory in [*work.glob("*/results"), *work.glob("*/reports")]:
                     directory.chmod(0o700)
-    print("Stage 3 reliability and report matrix passed. Stage 4 workflow/consumer and final clean-environment acceptance remain pending.")
+    print("Stage 3 reliability and report matrix passed. Workflow and full delivery evidence are recorded separately in docs/STATUS.md.")
 
 
 if __name__ == "__main__":

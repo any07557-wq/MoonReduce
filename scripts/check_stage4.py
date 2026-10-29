@@ -167,7 +167,7 @@ def main():
         case, reference, buggy, oracle = workflow(work, binary)
         oracle_contract(case, reference, buggy, oracle, binary)
         consumer(work)
-    print("Stage 4 examples passed. Synthetic defects and developer integration only; no external adoption or clean-environment release acceptance claimed.")
+    print("Stage 4 examples passed. Synthetic defects and developer integration only; external adoption is not claimed.")
 
 
 if __name__ == "__main__":

@@ -1,8 +1,10 @@
 # MoonReduce
 
-给一份失败文件和识别同一问题的外部判断程序，自动删除输入行，输出经过再次验证的较小反例；同时提供纯 MoonBit 可复用缩减核心。
+MoonReduce 面向已有失败输入的算法对拍、解析器和命令行开发者，按行删除文件内容并输出经复验的较小反例，同时提供纯 MoonBit 缩减核心。
 
-**当前为阶段 4 开发版**：Native CLI 及执行边界已验收，新增可复现的人工缺陷对拍流程和独立 MoonBit 账本消费工程。两者已在 Debug／Release 实跑；这是开发者验证，没有真实外部采用或新发现的生产 bug。干净环境独立验收尚未完成，当前不宣称可以最终发布。
+**Ready for local v0.1 review**：已用干净 Git 源码、全新固定 SDK 和空注册表完成构建、测试、CLI 案例及库消费。验证由实现者在同一台 WSL2 主机执行，未冒称另一位用户或另一台机器试用。案例为人工缺陷，没有外部采用，差异化仍有限；工程交付验收结论不代表月赛审核结果。工具版本保留 0.1.0-dev 表示尚未发布，模块 0.1.0 是本地源码元数据。
+
+下面是调用形式；未安装到 PATH 时，把 moonreduce 换为构建产物 `_build/native/release/build/cmd/moonreduce/moonreduce.exe`。本项目尚未发布安装包。
 
 ```sh
 moonreduce failing.txt --output reduced.txt --report report.json \
@@ -18,6 +20,8 @@ INPUT、--output、--report 和 -- 后的命令必填。判断程序收到其固
 --timeout-ms 默认 2000，范围 1–2147483647；--max-tests 默认 1000，范围 2–2147483647，包含初始检查、搜索、单删检查和最终复验，并预留最后一次调用。没有缓存。
 
 例如 max-tests=2 时，非空输入仅做初始检查和输出复验，不能声称 1-minimal；预算刚好足以完成全部检查则可以返回 0。实际次数统计成功启动的 setsid 判断启动器，包含后续 exec 失败；启动器自身无法启动另记 launch_failures，kill 等辅助调用不计入判断预算。
+
+**1-minimal** 仅指相对于确定 oracle、当前 LF 行粒度，逐个删除结果中的任意一个段都明确得到 NotInteresting；空结果的删除条件为空真。它不是全局最短或最少字节。最终一轮单删含 Unresolved 就不标 verified，预算中断只交付当前已知结果。历史 Unresolved 单独记录；后来取得完整明确证据时可以 verified。最终输出实际复验和这些单删证据分别报告，任何最终 NI/U/错误都不能返回成功。
 
 | 工具退出码 | 含义（与 oracle 退出码分开） |
 | --- | --- |
@@ -39,17 +43,18 @@ INPUT、--output、--report 和 -- 后的命令必填。判断程序收到其固
 
 ## 实测环境与构建
 
-首个验证环境为 Linux x86_64、WSL2（内核 `6.18.33.2-microsoft-standard-WSL2`）。组合固定为：
+本次支持与实测范围为 **WSL2 内 Ubuntu 26.04、Linux x86_64 Native**（内核 `6.18.33.2-microsoft-standard-WSL2`）。普通非 WSL Linux、其他发行版、ARM、macOS、Windows 原生均未验证，不列为本次已验证平台。组合固定为：
 
 - `moon 0.1.20261012 (748b63c)`，`moonc v0.10.15+943464bfa`，随工具链的 core 同版本。
 - `moonbitlang/async@0.22.4`，在 [moon.mod](moon.mod) 精确声明；无其他第三方 MoonBit 依赖。
 - GCC 15.2.0、glibc 2.43；运行组管理依赖 `/usr/bin/setsid`（util-linux 2.41.3）和 `/usr/bin/kill`（procps-ng 4.0.4）；文件身份检查使用 `/usr/bin/test -ef`（本机 uutils coreutils 0.8.0）。不依赖 GNU timeout。
-- 探针另用 `/usr/bin/python3`（本机 3.14.4）和 `/usr/bin/sleep`；CLI 本身不依赖 Python，下面的示例 oracle 使用 Python。
+- 探针另用 `/usr/bin/python3`（本机 3.14.4）和 `/usr/bin/sleep`；故障矩阵需要普通用户权限及支持 LD_PRELOAD 的 C 编译器。CLI 本身不依赖 Python，示例 oracle 使用 Python。
 
 在仓库根目录执行：
 
 ```sh
 moon version --all
+moon update
 moon check --target native --deny-warn
 moon build --target native --deny-warn
 moon run src/cmd/moonreduce --target native -- --help
@@ -61,7 +66,9 @@ python3 scripts/check_stage3.py
 python3 scripts/check_stage4.py
 ```
 
-首次 check/build 自动获取固定依赖；不需要 `moon upgrade`。核心测试独立重建子序列、重新判断结果并逐个删除元素复查，枚举小规模布尔/三态谓词；Debug 和 Release 使用同一套检查。也可执行 `moon test src/core --target wasm-gc --deny-warn`。
+首次使用空注册表时必须先 moon update 初始化索引；这是阶段 5 用新 SDK 实测发现并补齐的步骤，不是升级依赖。随后 check/build 自动获取已声明的 async@0.22.4，不需要 moon upgrade。依赖下载归档 SHA-256 为 2ffdb85cb229cfe9219161a7f2b959215a79a0d75b7e642cb346713f168a1457。
+
+核心测试独立重建子序列、重新判断结果并逐个删除元素复查，枚举小规模布尔／三态谓词；Debug 和 Release 使用同一套检查。也可执行 `moon test src/core --target wasm-gc --deny-warn`；这不代表 Native CLI 已跨平台验证。当前没有云 CI，云端执行未验证；以上本地固定版本命令已实跑。
 
 阶段 0 探针脚本核对工具链与 async 版本，执行 Native 字节/进程探针、纯核心 Wasm 检查、超时树清理、外部 SIGINT 和格式检查。成功末行是 `Stage 0 acceptance probes passed...`；临时候选和日志在结束时删除。也可单独运行 `moon run src/probe --target native`，但它不包含外部 SIGINT 验收。
 
@@ -71,6 +78,7 @@ python3 scripts/check_stage4.py
 moon build --target native --release --deny-warn
 python3 scripts/check_stage2.py _build/native/release/build/cmd/moonreduce/moonreduce.exe
 python3 scripts/check_stage3.py _build/native/release/build/cmd/moonreduce/moonreduce.exe
+python3 scripts/check_stage4.py _build/native/release/build/cmd/moonreduce/moonreduce.exe
 ```
 
 ## 已实跑的构建和缩减示例
@@ -99,23 +107,82 @@ cat "$moonreduce_demo_dir/reduced.txt"
 
 报告包含实际启动数、四阶段分项、三态／异常／中断分类、超时数、字节／行段变化、停止原因、最小性未验证原因及自身 exit_code。参数／路径预检和初始读文件错误仅写 stderr，不创建 JSON；报告写入失败也以 stderr 和退出码 4 明示，不留下空报告或宣称报告已保存。输出与报告分别原子写入，不是跨文件事务，不保证断电持久化。工具不提供沙箱，不保证恶意脱离进程组的程序或 SIGKILL 后的清理。
 
-新环境如需安装工具链，可按[官方安装说明](https://docs.moonbitlang.com/en/latest/download-and-install.html)使用固定构建版本（阶段 0 核对过官方脚本参数及两个归档 URL 的 HTTP 200，未重新安装工具链）：
+## 实际 JSON 报告与解释
 
-```sh
-curl --fail --location https://cli.moonbitlang.com/install/unix.sh -o /tmp/moonbit-install.sh
-bash /tmp/moonbit-install.sh '0.10.15+943464bfa'
-export PATH="$HOME/.moon/bin:$PATH"
+[完整实录](docs/report.example.json)来自阶段 5 干净源码与新 SDK 上的算法对拍运行，只做 JSON 缩进，不改写字段；其中临时绝对路径和 elapsed_ms 属于那一次运行，重新运行会不同。以下为字段节选：
+
+```json
+{
+  "tool_version": "0.1.0-dev",
+  "original_bytes": 310,
+  "original_segments": 96,
+  "best_bytes": 9,
+  "best_segments": 3,
+  "stop_reason": "completed",
+  "exit_code": 0,
+  "final_revalidation": "interesting",
+  "minimality": "verified",
+  "minimality_checked": 3,
+  "minimality_required": 3,
+  "tests_started": 98,
+  "tests_by_phase": {"initial": 1, "search": 93, "minimality": 3, "final": 1},
+  "result_status": "revalidated_interesting",
+  "only_previously_observed_interesting": false
+}
 ```
 
-这个官方安装步骤会写入默认工具链目录，应在新环境使用。阶段 0 没有执行干净机器独立验收；第三天按 README 独立复现是交付门槛。
+final_revalidation 说明实际输出路径仍触发目标；minimality 说明单删证据。预算或 U 阻止证明时，即使目标复验通过，也返回 1。最终 NI/U/异常返回 4，并保留此前的最小性字段作为历史证据；未复验／失败的输出标 previously_interesting，不宣称成功。历史 U 另看 had_unresolved；它不是最终最小性字段的别名。
+
+## 两三分钟演示
+
+这是讲解顺序，不是性能保证。先按[算法案例](examples/algorithm/README.md)的命令块准备一个新目录、两个提前编译的目标与初始文件；也可整块运行该案例后，复用其 shell 变量，在以下全新输出名上演示：
+
+1. 展示初始 96 段文件，运行 oracle，说明两个程序都正常退出但答案不同。
+2. 启动 MoonReduce，展示自动删除与输出摘要。
+3. 独立运行 oracle 和 audit，展示输出仍有指定差异、任意单删均无差异。
+4. 解释报告中的复验、最小性、98 次启动分项；说明人工缺陷、无外部采用和已知边界。
+
+```sh
+python3 examples/algorithm/oracle.py --reference "$moonreduce_case_dir/reference" --buggy "$moonreduce_case_dir/buggy" "$moonreduce_case_dir/initial.txt"
+_build/native/release/build/cmd/moonreduce/moonreduce.exe "$moonreduce_case_dir/initial.txt" --output "$moonreduce_case_dir/demo-reduced.txt" --report "$moonreduce_case_dir/demo-report.json" --timeout-ms 5000 --max-tests 500 -- python3 examples/algorithm/oracle.py --reference "$moonreduce_case_dir/reference" --buggy "$moonreduce_case_dir/buggy"
+python3 examples/algorithm/oracle.py --reference "$moonreduce_case_dir/reference" --buggy "$moonreduce_case_dir/buggy" "$moonreduce_case_dir/demo-reduced.txt"
+python3 examples/algorithm/audit.py --reference "$moonreduce_case_dir/reference" --buggy "$moonreduce_case_dir/buggy" "$moonreduce_case_dir/demo-reduced.txt"
+python3 -m json.tool "$moonreduce_case_dir/demo-report.json"
+```
+
+初次演示使用新案例目录，已有输出不会被覆盖。[SUBMISSION.md](docs/SUBMISSION.md)汇总“值得做、做得对、做得完”的证据，并将工程完成与需求／采用证据分开。
+
+## 固定工具链的独立安装
+
+如果已有上面完全相同的版本，可跳过此节。下面使用[官方归档](https://docs.moonbitlang.com/en/latest/download-and-install.html)，安装到新的临时目录，保留现有安装；只适用于本次已验证环境。另需 curl、tar、sha256sum 和前述系统编译／运行依赖。两个归档已经实际下载、核对哈希、解包并完成 Native／Wasm core bundle。
+
+```sh
+moonreduce_sdk="$(mktemp -d)"
+curl --fail --location --connect-timeout 10 --max-time 180 --output "$moonreduce_sdk/moonbit.tar.gz" 'https://cli.moonbitlang.com/binaries/0.10.15%2B943464bfa/moonbit-linux-x86_64.tar.gz'
+curl --fail --location --connect-timeout 10 --max-time 60 --output "$moonreduce_sdk/core.tar.gz" 'https://cli.moonbitlang.com/cores/core-0.10.15%2B943464bfa.tar.gz'
+printf '%s  %s\n' '24b93a5409d2a4fb8e3d1b84b473f27b63476cef4418094764df96cb26b03c09' "$moonreduce_sdk/moonbit.tar.gz" '96d30f4dbcc6a9e1736ef26fbdd0e8fb0e97cb01d50e55d2a0072208b8061ae5' "$moonreduce_sdk/core.tar.gz" | sha256sum --check -
+tar -xzf "$moonreduce_sdk/moonbit.tar.gz" -C "$moonreduce_sdk"
+mkdir -p "$moonreduce_sdk/lib"
+tar -xzf "$moonreduce_sdk/core.tar.gz" -C "$moonreduce_sdk/lib"
+chmod +x "$moonreduce_sdk"/bin/* "$moonreduce_sdk/bin/internal/tcc"
+export MOON_HOME="$moonreduce_sdk"
+export PATH="$MOON_HOME/bin:$PATH"
+moon -C "$MOON_HOME/lib/core" bundle --target native --warn-list -a
+moon -C "$MOON_HOME/lib/core" bundle --target wasm-gc --warn-list -a
+moon version --all
+```
+
+然后回到仓库根目录，执行构建节的 moon update 和其余命令。不要省略固定版本或把 URL 换为 latest。实测没有使用作者工程 _build、未跟踪文件、原 SDK 或原注册表缓存；宿主系统的 C 编译器、glibc 和 init/reaper 仍是同一台机器的环境，不能据此宣称另一操作系统或外部用户已验证。
 
 ## 范围、证据与来源
 
 首版只做单文件、LF 字节保真、按行、串行删除；不是语法解析器、自动修复器或沙箱。只有 Interesting 候选替换最佳结果。最终实际复验与最小性验证分开报告；不保证全局最短或解决随机故障。
 
+完整输入保存在内存中，没有超大文件性能承诺；临时日志不设磁盘配额，默认清理后仅留有界诊断。原子发布不保证断电持久化；强制终止的孤儿后代最终由实测系统 init/reaper 回收。解析器等其他实际案例、外部用户试用、独立机器、其他平台及云 CI 均未验证。当前两个缺陷均为人工植入，没有生产 bug 发现经历可宣称。
+
 - [行为规格](docs/SPEC.md)：两套退出码、预算预留、停止原因、复验及最小性状态。
 - [阶段计划](docs/PLAN.md)、[实际验证与事实记录](docs/STATUS.md)。
-- [Picire](https://github.com/renatahodovan/picire) 和 [C-Reduce](https://github.com/csmith-project/creduce) 是已存在的相关工具；本地 Mooncakes 索引也已发现 `Ag108/MoonReduce`，没有声称生态空白或选题必然获准。
+- [QuickCheck shrinking、Picire、Lithium 的任务比较](examples/README.md)与 [C-Reduce](https://github.com/csmith-project/creduce)说明已有替代能力；本地 Mooncakes 索引也已发现 `Ag108/MoonReduce`，没有声称生态空白或选题必然获准。
 - 文件/进程复用 [moonbitlang/async](https://github.com/moonbitlang/async)，参数/JSON 复用 [moonbitlang/core](https://github.com/moonbitlang/core)；二者为 Apache-2.0 依赖，保留其原许可证，不改成 MIT。
 
 本项目原创代码使用 [MIT](LICENSE)。算法概念参考 [The Debugging Book](https://www.debuggingbook.org/html/DeltaDebugger.html)；核心按本项目契约独立实现，没有复制其 Python 代码。测试 oracle 是人工编写的夹具，不是新发现的生产 bug。来源和赛事公开信息见 STATUS。
