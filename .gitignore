@@ -1,0 +1,11 @@
+/_build/
+/target/
+/.mooncakes/
+/.repos/
+/.agents/
+/.aws/
+/.codex/
+*.core
+core.[0-9]*
+__pycache__/
+*.pyc
