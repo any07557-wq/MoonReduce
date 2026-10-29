@@ -1,0 +1,6 @@
+import {
+  "moonreduce/moonreduce/core" @reduce,
+  "moonbitlang/core/debug",
+}
+
+pkgtype(kind: "executable")

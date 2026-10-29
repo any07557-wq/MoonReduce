@@ -1,6 +1,6 @@
 # 实际状态与事实记录
 
-记录日期：2026-10-29（Asia/Shanghai）。阶段 0–3 已验收，当前完成 Native CLI 执行限制、可靠保存、进程清理和报告矩阵；不代表最终可发布或比赛审核通过。实际调试案例、独立消费工程和干净环境验收尚未完成。
+记录日期：2026-10-29（Asia/Shanghai）。阶段 0–4 已验收，现有可靠性矩阵、人工缺陷算法对拍流程及独立 MoonBit 消费工程都有运行证据；不代表最终可发布或比赛审核通过。干净环境独立验收尚未完成，没有真实外部采用或新发现的生产缺陷证据。
 
 ## 阶段 0 已完成（历史记录）
 
@@ -172,7 +172,49 @@
 - 每流 32 MiB stdout/stderr 文件重定向，诊断每流实际 4096 字节并标截断，报告保持有界；所有正常／已测故障完成后临时候选、日志和原子写入文件均无泄漏。没有设置日志磁盘配额。
 - 测试库只在临时目录构建，用于外部计数和故障注入，不链接 CLI、不新增运行依赖；每次进程调用均设合理看门狗，失败补救清理不计入验收证据。
 
-验收结论：本阶段通过。关键清理与复验语义由真实进程、权限故障及外部计数核实，没有放宽通过条件、以 mock 代替进程或把尚未执行的案例标成通过。SPEC、README 与 PLAN 已同步。阶段 4 的实际开发者调试流程、独立 MoonBit 消费工程及阶段 5 干净环境复现仍未验证。
+验收结论：本阶段通过。关键清理与复验语义由真实进程、权限故障及外部计数核实，没有放宽通过条件、以 mock 代替进程或把尚未执行的案例标成通过。SPEC、README 与 PLAN 已同步。截至阶段 3 结束，阶段 4 的调试流程、消费工程及阶段 5 干净环境复现尚未验证；后续结果见下一节。
+
+## 阶段 4 可复现调试与库消费
+
+开始时检查 cwd／Git 根、Git 状态和 AGENTS.md，读取 SPEC、PLAN、STATUS。main 干净，前置提交为 5906d7e（fix: enforce reducer execution and result guarantees）；没有前置阻塞或无关改动。按用户 3 小时预算执行，没有进入阶段 5；没有修改核心算法、Native 驱动或固定依赖版本。
+
+没有现成、已授权可公开的实际缺陷材料，采用明确标注的原创人工缺陷。examples/algorithm 的两个最大连续子段和程序提前各编译一次；正确实现累积和为负才归零，错误版本遇到负数就归零。候选为每段一个整数，oracle 校验后重新构造 n 与数组，分别执行两程序；只有两者正常结束、输出合法且 reference > buggy 才返回 Interesting。相等为 NI，格式／域无效为 U；缺失命令、崩溃、异常退出、空／垃圾／越界输出、反方向差异及目标执行保护触发均为执行错误，不作为复现。oracle 没有缩减逻辑或编译调用。
+
+Debug／Release 实际结果一致：
+
+| 项目 | 真实结果 |
+| --- | --- |
+| 生成初始输入 | seed=1729，96 段、310 字节，SHA-256 为 29d8ecde61cb096cc58abb769949891883c696a9293c49dd153affc95fa3a8d8 |
+| 缩减文件 | 17、-3、19，各一段并保留 LF；3 段、9 字节 |
+| CLI 实际启动 | 98 = 初始 1 + 搜索 93 + 单删 3 + 最终 1；独立调用日志与报告相符 |
+| 最终及 CLI 退出后的独立复验 | Interesting，正确答案 33、错误答案 19 |
+| 独立单删审计 | 删除 17 得到 19/19，删除 -3 得到 36/36，删除 19 得到 17/17；全为 NI |
+| 安全与编译时机 | 原始字节不变；两目标的哈希／mtime 不变，全部编译在首轮 oracle 之前 |
+
+audit.py 不导入 oracle 或核心算法；独立枚举所有连续区间核对参考程序，再分别删除每个结果元素，重新生成 n 并运行两个二进制。额外检查在 CLI 外进行，不混入其 98 次预算。README 给出的完整命令块也已直接执行，得到相同结果；该命令运行目录保留在 /tmp/tmp.wqYOeWU6bE 供本机查看，不提交产物或日志。
+
+独立 examples/moonbit-consumer 模块使用账本 Operation／Entry 与既有状态回放分类，直接通过公开 core API 缩减确定的 ResetKeptBalance 签名；非法交易映射为 U。Entry 没有 Arbitrary/Shrink 实现，Eq 只用于示例独立核对。实际 8 个操作 → 2 个，23 次核心回调，原始位置 [1, 3]，保留 id=11 Credit(12)、id=13 Reset；独立回放 reference=0、injected=12，两个单删都 NI。测试和 main 均检查位置身份／顺序、目标行为与自行重建的单删候选，不把内部 verified 标志当作证明。
+
+本地包接入使用当前工具链真实支持的 moon.mod + moon.work。已实际确认旧 moon.mod.json/path 不支持，改为两个 workspace member 解析本地源码；import 的 0.1.0 只是库已有的源码版本元数据，不是假称已发布。moon tree 显示两个 local 成员，模块依赖仍解析 async@0.22.4；消费代码只导入 core 和标准 debug。脚本另把消费工程迁出仓库，改写 moon.work 的库路径，在全新的 --target-dir 编译并运行，核对构建计划未使用作者 _build，实际 core.core 与接口在新目录生成。没有复制核心、访问私有字段或依赖作者编译产物；这仍是同机开发者集成验证。
+
+| 阶段 4 实际命令 | 结果 |
+| --- | --- |
+| moon check --target native --deny-warn | 通过 |
+| moon build --target native --deny-warn；添加 --release 的同命令 | Debug／Release 通过 |
+| moon test --target native --deny-warn；添加 --release 的同命令 | Debug／Release 各 21 个测试通过 |
+| python3 scripts/check_stage4.py | 对拍、oracle 错误契约、消费工程 check/build/test/run、迁出目录与新产物构建全部通过 |
+| python3 scripts/check_stage4.py _build/native/release/build/cmd/moonreduce/moonreduce.exe | 相同矩阵通过，缩减结果及调用数一致 |
+| moon -C examples/moonbit-consumer check/build/test/run src --target native --deny-warn（四条分别执行） | 全部通过；test/run 另在 --release 下通过 |
+| examples/algorithm/README.md 首个 sh 命令块 | 整块实际执行通过；CLI 0、最终 I、最小性 verified，独立 oracle 0，外部审计通过 |
+| python3 scripts/check_stage2.py | 原 BUG 标记基础流程、字节／路径／基本失败处理及 500ms 嵌套超时回归通过 |
+| moon fmt --check；moon -C examples/moonbit-consumer fmt --check | 通过 |
+| python3 -m py_compile（阶段 4 脚本和三个 Python 示例）；git diff --check | 通过 |
+
+采用理由回填与比较见 examples/README.md。现有证据支持“已有失败文件能够自动删除、保存、再次验证”和“MoonBit 调用者可以直接复用类型／业务判定”。人工例子不计作新发现的生产 bug；没有外部用户，不能写成已有采用。解析器等其他实际工作流待验证，没有测量相对人工或其他工具的速度、体积或接入时间。
+
+实际核对了 Picire README（行／字符、库／CLI、并行配置）、Lithium README／interestingness 接口文档，以及 MoonBit QuickCheck 包文档和本机固定 core 的 Shrink／属性驱动说明。QuickCheck 本身已有给定起点和自定义 shrinker 的手动接口，不能以“不必随机生成”或“不必给元素实现 Shrink”宣称独有。没有安装这些项目运行本案例或做性能赛跑；部分原始 GitHub 文件抓取失败时改读可用的一手文档及固定本机源码，具体来源在 examples。现有算法与任务不新，参赛差异化仍有限，真实采用和外部可用性还需证据，不能保证审核。
+
+阶段 4 通过；阶段 3 完整故障矩阵本阶段没有重跑，其验收记录保留且运行层未改变。干净机器／新工具链构建、独立外部复现、普通非 WSL Linux 及真实生产缺陷案例仍未验证。
 
 ## 公开事实与相关工作
 
@@ -191,10 +233,10 @@
 
 ## 验收结论、限制和下一步
 
-阶段 0 的文件／进程能力、阶段 1 的纯核心、阶段 2 的 CLI 主流程及阶段 3 的可靠性和报告矩阵均已通过；完整 v0.1 尚未通过最终发布验收。计划仍为 21 小时并保留约 2 小时缓冲，本阶段在约 4 小时预算内完成，三天预算仍可信。
+阶段 0–4 已通过，包括文件／进程能力、纯核心、CLI 主流程、可靠性／报告矩阵、人工对拍和独立库消费。完整 v0.1 尚未通过最终发布验收。按用户阶段 4 的 3h prompt 更新计划后，阶段工作估算 19 小时，另留约 2 小时缓冲，合计约 21 小时；本阶段在预算内完成，三天预算仍可信。
 
 原历史探针对 kill 0/1 的宽松判断不作为正式 runner 的语义。Native runner 已严格区分 ESRCH 和其他失败，并通过正常、超时、中断三种清理上下文的辅助启动失败注入。强制终止孤儿后代的最终回收依赖实际环境 init/reaper；普通非 WSL Linux 及其他容器 init 行为未验证。不承诺恶意 setsid 脱离、不可中断内核等待、SIGKILL 或断电后的用户态清理。
 
-保存和 JSON 分别原子发布，不是跨文件事务、不承诺断电持久化；日志不设磁盘配额。必要文件无法操作时可能无法写出报告，明确以 stderr 和退出码 4 报错。新装工具链／干净环境、独立消费工程和实际开发者调试流程仍未验证。当前 BUG 标记示例与故障 fixture 都是人工案例，不是新发现的生产 bug；不承诺全局最短或随机 oracle 稳定性。
+保存和 JSON 分别原子发布，不是跨文件事务、不承诺断电持久化；日志不设磁盘配额。必要文件无法操作时可能无法写出报告，明确以 stderr 和退出码 4 报错。人工算法调试流程和独立库集成已验证；新装工具链／干净环境、独立外部复现、真实生产缺陷和用户采用仍未验证。BUG 标记、算法缺陷、账本错误与故障 fixture 都是人工案例；不承诺全局最短或随机 oracle 稳定性。
 
-下一阶段入口：等待用户阶段 4 prompt，完成可复现开发者调试流程与独立 MoonBit 消费工程；本阶段结束后停止，不提前进入下一阶段。
+下一阶段入口：等待用户阶段 5 prompt，进行干净环境独立复现与收尾；本阶段结束后停止，不提前进入下一阶段。

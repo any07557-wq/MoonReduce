@@ -2,6 +2,8 @@
 
 导入 `moonreduce/moonreduce/core`，无需导入进程、文件或 async 包。
 
+完整的[独立消费工程](../../examples/moonbit-consumer/README.md)通过 moon.work 本地模块依赖复用账本 Entry、操作枚举和错误签名，含实际 check/build/test/run 与独立单删检查；不是复制本包源文件的示例。模块解析仍会处理主模块的 async 依赖，消费代码不调用它。
+
 ## 同步序列接口
 
 `reduce(input, oracle)` 接受任意元素序列及三态同步回调，返回原始位置和对应元素。元素无需实现 Hash 或 Eq。它复制输入的序列结构，引用类型的元素不会深拷贝，调用期间应保持稳定。回调错误原样传播；它不隐藏最终复验或提供调用预算。

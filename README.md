@@ -2,7 +2,7 @@
 
 给一份失败文件和识别同一问题的外部判断程序，自动删除输入行，输出经过再次验证的较小反例；同时提供纯 MoonBit 可复用缩减核心。
 
-**当前为阶段 3 开发版**：Native CLI 的输入、缩减、保存、复验和报告流程，以及预算、超时、进程清理、写入失败和 Ctrl-C 的可靠性矩阵已通过。纯核心可通过[同步序列 API](src/core/README.mbt.md)独立使用。实际调试案例、独立消费工程及干净环境验收尚未完成，当前不宣称可以最终发布。
+**当前为阶段 4 开发版**：Native CLI 及执行边界已验收，新增可复现的人工缺陷对拍流程和独立 MoonBit 账本消费工程。两者已在 Debug／Release 实跑；这是开发者验证，没有真实外部采用或新发现的生产 bug。干净环境独立验收尚未完成，当前不宣称可以最终发布。
 
 ```sh
 moonreduce failing.txt --output reduced.txt --report report.json \
@@ -28,6 +28,15 @@ INPUT、--output、--report 和 -- 后的命令必填。判断程序收到其固
 | 4 | 执行错误或输出复验失败／无法判断 |
 | 130 | 中断；保留已知结果，报告未完成的验证 |
 
+## 已验证的具体用法
+
+| 场景 | 实测结果与入口 |
+| --- | --- |
+| 算法对拍：删除整数段，由 oracle 重建 n 和数组，运行两个提前编译的实现 | [人工最大子段和缺陷](examples/algorithm/README.md)：96 段／310 字节 → 3 段／9 字节；98 次 CLI 判断，最终答案 33/19；外部逐删 3 次均 NotInteresting |
+| MoonBit 类型集成：直接传业务操作与判定回调 | [独立账本消费工程](examples/moonbit-consumer/README.md)：8 个 Entry → 2 个，23 次回调；复用 Credit/Debit/Reset 和错误分类，本地依赖公开核心，不复制源码或依赖作者构建缓存 |
+
+这支持了“已有失败输入可以走完整调试闭环”和“MoonBit 调用者可以直接复用类型／谓词”两条采用理由。QuickCheck、Picire、Lithium 已有相近能力；[任务比较与证据边界](examples/README.md)明确列出剩余差异。没有测量更快、更轻、更易用，也没有证明真实用户迁移或采用，参赛差异化仍有限。
+
 ## 实测环境与构建
 
 首个验证环境为 Linux x86_64、WSL2（内核 `6.18.33.2-microsoft-standard-WSL2`）。组合固定为：
@@ -49,6 +58,7 @@ moon test src/core --target native --release --deny-warn
 python3 scripts/check_stage0.py
 python3 scripts/check_stage2.py
 python3 scripts/check_stage3.py
+python3 scripts/check_stage4.py
 ```
 
 首次 check/build 自动获取固定依赖；不需要 `moon upgrade`。核心测试独立重建子序列、重新判断结果并逐个删除元素复查，枚举小规模布尔/三态谓词；Debug 和 Release 使用同一套检查。也可执行 `moon test src/core --target wasm-gc --deny-warn`。
@@ -65,7 +75,7 @@ python3 scripts/check_stage3.py _build/native/release/build/cmd/moonreduce/moonr
 
 ## 已实跑的构建和缩减示例
 
-下面用人工 BUG 标记验证 CLI 管道，不是新发现的生产 bug。构建后运行的 Native 文件名由 MoonBit 生成为 moonreduce.exe：
+下面用人工 BUG 标记保留基础 CLI 回归，不是生产 bug，也不承担算法调试案例的论证；完整案例见上面的 examples。构建后运行的 Native 文件名由 MoonBit 生成为 moonreduce.exe：
 
 ```sh
 moon build --target native --release --deny-warn
